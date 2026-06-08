@@ -1,4 +1,4 @@
-use std::io::{self, Error, ErrorKind};
+use crate::error::ProtocolError;
 
 pub const CHATIX_MAGIC: [u8; 4] = *b"CHTX";
 pub const CHATIX_VERSION: u8 = 1;
@@ -34,7 +34,6 @@ impl PacketHeader {
 
     pub fn to_bytes(&self) -> [u8; CHATIX_HEADER_SIZE] {
         let mut out = [0u8; CHATIX_HEADER_SIZE];
-
         out[0..4].copy_from_slice(&self.magic);
         out[4] = self.version;
         out[5] = self.packet_type;
@@ -43,7 +42,6 @@ impl PacketHeader {
         out[8..12].copy_from_slice(&self.payload_len.to_be_bytes());
         out[12..20].copy_from_slice(&self.sequence.to_be_bytes());
         out[20..24].copy_from_slice(&self.reserved.to_be_bytes());
-
         out
     }
 
@@ -56,40 +54,32 @@ impl PacketHeader {
             header_len: bytes[7],
             payload_len: u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]),
             sequence: u64::from_be_bytes([
-                bytes[12], bytes[13], bytes[14], bytes[15], bytes[16], bytes[17], bytes[18],
-                bytes[19],
+                bytes[12], bytes[13], bytes[14], bytes[15],
+                bytes[16], bytes[17], bytes[18], bytes[19],
             ]),
             reserved: u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]),
         }
     }
 
-    pub fn validate(&self) -> io::Result<()> {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
         if self.magic != CHATIX_MAGIC {
-            return Err(Error::new(ErrorKind::InvalidData, "invalid packet magic"));
+            return Err(ProtocolError::InvalidMagic);
         }
-
         if self.version != CHATIX_VERSION {
-            return Err(Error::new(
-                ErrorKind::InvalidData,
-                "unsupported protocol version",
-            ));
+            return Err(ProtocolError::UnsupportedVersion(self.version));
         }
-
         if self.header_len != CHATIX_HEADER_LEN {
-            return Err(Error::new(ErrorKind::InvalidData, "invalid header length"));
+            return Err(ProtocolError::InvalidHeaderLength);
         }
-
         if self.payload_len > MAX_PAYLOAD_LEN {
-            return Err(Error::new(ErrorKind::InvalidData, "payload too large"));
+            return Err(ProtocolError::PayloadTooLarge {
+                size: self.payload_len,
+                max: MAX_PAYLOAD_LEN,
+            });
         }
-
         if self.reserved != 0 {
-            return Err(Error::new(
-                ErrorKind::InvalidData,
-                "reserved field must be zero in protocol v1",
-            ));
+            return Err(ProtocolError::ReservedFieldNonZero);
         }
-
         Ok(())
     }
 
@@ -124,10 +114,8 @@ mod tests {
     #[test]
     fn header_roundtrip() {
         let header = PacketHeader::new(10, flags::ENCRYPTED | flags::ACK_REQUIRED, 128, 42);
-
         let bytes = header.to_bytes();
         let decoded = PacketHeader::from_bytes(bytes);
-
         assert_eq!(header, decoded);
     }
 
@@ -141,7 +129,6 @@ mod tests {
     fn header_validation_invalid_magic() {
         let mut header = PacketHeader::new(1, 0, 64, 1);
         header.magic = *b"NOPE";
-
         assert!(header.validate().is_err());
     }
 
@@ -149,13 +136,19 @@ mod tests {
     fn header_validation_invalid_version() {
         let mut header = PacketHeader::new(1, 0, 64, 1);
         header.version = 99;
-
         assert!(header.validate().is_err());
     }
 
     #[test]
     fn header_validation_payload_too_large() {
         let header = PacketHeader::new(1, 0, MAX_PAYLOAD_LEN + 1, 1);
+        assert!(header.validate().is_err());
+    }
+
+    #[test]
+    fn header_validation_reserved_nonzero() {
+        let mut header = PacketHeader::new(1, 0, 64, 1);
+        header.reserved = 1;
         assert!(header.validate().is_err());
     }
 }
