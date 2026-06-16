@@ -9,6 +9,12 @@ pub enum PacketType {
     ClientFinish = 3,
     ServerAccept = 4,
 
+    // Auth (5–8)
+    AuthChallenge = 5,
+    AuthResponse = 6,
+    AuthAccept = 7,
+    AuthReject = 8,
+
     // Control (20–39)
     Ping = 20,
     Pong = 21,
@@ -29,6 +35,10 @@ impl PacketType {
             2 => Ok(Self::ServerHello),
             3 => Ok(Self::ClientFinish),
             4 => Ok(Self::ServerAccept),
+            5 => Ok(Self::AuthChallenge),
+            6 => Ok(Self::AuthResponse),
+            7 => Ok(Self::AuthAccept),
+            8 => Ok(Self::AuthReject),
             20 => Ok(Self::Ping),
             21 => Ok(Self::Pong),
             40 => Ok(Self::SendMessage),
@@ -50,6 +60,12 @@ impl PacketType {
             // server_id + x25519 pubkey (32 B) + ML-KEM-768 ciphertext (1088 B)
             Self::ServerHello => 1200,
             Self::ClientFinish | Self::ServerAccept => 1,
+            // 32-byte nonce
+            Self::AuthChallenge => 32,
+            // 32 pk + 64 sig + 4 len-prefix + up to 4096 attestation chain
+            Self::AuthResponse => 4200,
+            // empty payloads
+            Self::AuthAccept | Self::AuthReject => 0,
             Self::Ping | Self::Pong => 8,
             Self::SendMessage | Self::DeliverMessage => 65536,
             Self::Error | Self::Close => 1024,

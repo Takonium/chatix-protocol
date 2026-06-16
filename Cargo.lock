@@ -70,13 +70,11 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 name = "chatix-protocol"
 version = "0.1.0"
 dependencies = [
- "bytes",
  "hkdf",
  "ml-dsa",
  "ml-kem",
  "rand_core 0.6.4",
  "ring",
- "serde",
  "sha2",
  "thiserror",
  "tokio",

@@ -1,3 +1,4 @@
+pub mod auth_payloads;
 pub mod close_payloads;
 mod common;
 pub mod error_payloads;
@@ -5,6 +6,9 @@ pub mod hello_payloads;
 pub mod message_payloads;
 pub mod ping_payloads;
 
+pub use auth_payloads::{
+    AuthAcceptPayload, AuthChallengePayload, AuthRejectPayload, AuthResponsePayload,
+};
 pub use close_payloads::{ClosePayload, CloseReason};
 pub use error_payloads::ErrorPayload;
 pub use hello_payloads::{

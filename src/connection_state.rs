@@ -5,6 +5,7 @@ use crate::packet_type::PacketType;
 pub enum ConnectionState {
     AwaitingClientHello,
     AwaitingClientFinish,
+    AwaitingAuth,
     Established,
     Closing,
 }
@@ -16,6 +17,10 @@ impl ConnectionState {
             Self::AwaitingClientHello => matches!(packet_type, PacketType::ClientHello),
             Self::AwaitingClientFinish => {
                 matches!(packet_type, PacketType::ClientFinish | PacketType::Error)
+            }
+            // Only the auth response is accepted before identity is proven.
+            Self::AwaitingAuth => {
+                matches!(packet_type, PacketType::AuthResponse | PacketType::Error)
             }
             Self::Established => matches!(
                 packet_type,
@@ -42,7 +47,8 @@ impl ConnectionState {
     pub fn advance(self, packet_type: PacketType) -> Self {
         match (self, packet_type) {
             (Self::AwaitingClientHello, PacketType::ClientHello) => Self::AwaitingClientFinish,
-            (Self::AwaitingClientFinish, PacketType::ClientFinish) => Self::Established,
+            (Self::AwaitingClientFinish, PacketType::ClientFinish) => Self::AwaitingAuth,
+            (Self::AwaitingAuth, PacketType::AuthResponse) => Self::Established,
             // Any Error or Close packet from either side moves to Closing.
             (_, PacketType::Close | PacketType::Error) => Self::Closing,
             (state, _) => state,
@@ -63,6 +69,10 @@ mod tests {
 
         assert!(s.validate_incoming(PacketType::ClientFinish).is_ok());
         let s = s.advance(PacketType::ClientFinish);
+        assert_eq!(s, ConnectionState::AwaitingAuth);
+
+        assert!(s.validate_incoming(PacketType::AuthResponse).is_ok());
+        let s = s.advance(PacketType::AuthResponse);
         assert_eq!(s, ConnectionState::Established);
     }
 
@@ -70,6 +80,13 @@ mod tests {
     fn rejects_message_before_handshake() {
         let s = ConnectionState::AwaitingClientHello;
         assert!(s.validate_incoming(PacketType::SendMessage).is_err());
+    }
+
+    #[test]
+    fn rejects_message_before_auth() {
+        let s = ConnectionState::AwaitingAuth;
+        assert!(s.validate_incoming(PacketType::SendMessage).is_err());
+        assert!(s.validate_incoming(PacketType::Ping).is_err());
     }
 
     #[test]
