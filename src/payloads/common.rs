@@ -79,3 +79,14 @@ pub fn require_fully_consumed(bytes: &[u8], consumed: usize, payload_name: &str)
 
     Ok(())
 }
+
+pub fn decode_bool(value: u8, field_name: &str) -> io::Result<bool> {
+    match value {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("{field_name} must be encoded as 0 or 1"),
+        )),
+    }
+}

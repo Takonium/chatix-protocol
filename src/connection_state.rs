@@ -30,8 +30,8 @@ impl ConnectionState {
                     | PacketType::DeliverMessage
                     | PacketType::RegisterDevice
                     | PacketType::RegisterResponse
-                    | PacketType::QuerySubscriptionStatus
-                    | PacketType::SubscriptionStatusResponse
+                    | PacketType::QueryAccountStatus
+                    | PacketType::AccountStatusResponse
                     | PacketType::FetchQueuedMessages
                     | PacketType::QueuedMessageDelivery
                     | PacketType::AckQueuedMessage

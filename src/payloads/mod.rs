@@ -1,3 +1,4 @@
+pub mod account_payloads;
 pub mod auth_payloads;
 pub mod close_payloads;
 mod common;
@@ -7,8 +8,8 @@ pub mod message_payloads;
 pub mod ping_payloads;
 pub mod queue_payloads;
 pub mod registration_payloads;
-pub mod subscription_payloads;
 
+pub use account_payloads::{AccountStatusResponsePayload, QueryAccountStatusPayload};
 pub use auth_payloads::{
     AuthAcceptPayload, AuthChallengePayload, AuthRejectPayload, AuthResponsePayload,
 };
@@ -21,4 +22,3 @@ pub use message_payloads::{DeliverMessagePayload, SendMessagePayload};
 pub use ping_payloads::{PingPayload, PongPayload};
 pub use queue_payloads::{AckQueuedMessagePayload, FetchQueuedMessagesPayload, QueuedMessageDeliveryPayload};
 pub use registration_payloads::{RegisterDevicePayload, RegisterResponsePayload};
-pub use subscription_payloads::{QuerySubscriptionStatusPayload, SubscriptionStatusResponsePayload};

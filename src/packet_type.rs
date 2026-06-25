@@ -27,9 +27,9 @@ pub enum PacketType {
     RegisterDevice = 42,
     RegisterResponse = 43,
 
-    // Subscription (44–45)
-    QuerySubscriptionStatus = 44,
-    SubscriptionStatusResponse = 45,
+    // Account status — ban + subscription combined (44–45)
+    QueryAccountStatus = 44,
+    AccountStatusResponse = 45,
 
     // Offline message queue (46–48)
     FetchQueuedMessages = 46,
@@ -58,8 +58,8 @@ impl PacketType {
             41 => Ok(Self::DeliverMessage),
             42 => Ok(Self::RegisterDevice),
             43 => Ok(Self::RegisterResponse),
-            44 => Ok(Self::QuerySubscriptionStatus),
-            45 => Ok(Self::SubscriptionStatusResponse),
+            44 => Ok(Self::QueryAccountStatus),
+            45 => Ok(Self::AccountStatusResponse),
             46 => Ok(Self::FetchQueuedMessages),
             47 => Ok(Self::QueuedMessageDelivery),
             48 => Ok(Self::AckQueuedMessage),
@@ -93,9 +93,10 @@ impl PacketType {
             // 1-byte success flag + 2-byte len prefix + up to 256-byte message
             Self::RegisterResponse => 259,
             // empty request payload
-            Self::QuerySubscriptionStatus => 0,
-            // 1-byte is_active + 8-byte expiry timestamp
-            Self::SubscriptionStatusResponse => 9,
+            Self::QueryAccountStatus => 0,
+            // 1-byte is_banned + 2-byte len prefix + up to 256-byte ban_reason
+            // + 1-byte subscription_active + 8-byte expiry timestamp
+            Self::AccountStatusResponse => 268,
             // empty request payload
             Self::FetchQueuedMessages => 0,
             // 8-byte queue_id + sender_id + content, same size class as DeliverMessage

@@ -1,4 +1,4 @@
-use super::common::{decode_sized_string, encode_sized_string, require_fully_consumed};
+use super::common::{decode_bool, decode_sized_string, encode_sized_string, require_fully_consumed};
 use std::io::{self, Error, ErrorKind};
 
 /// Sent by the client (in the Established state) to claim a username for its
@@ -44,17 +44,6 @@ impl RegisterResponsePayload {
         let (message, consumed) = decode_sized_string(&bytes[1..])?;
         require_fully_consumed(bytes, 1 + consumed, "register_response")?;
         Ok(Self { success, message })
-    }
-}
-
-fn decode_bool(value: u8, field_name: &str) -> io::Result<bool> {
-    match value {
-        0 => Ok(false),
-        1 => Ok(true),
-        _ => Err(Error::new(
-            ErrorKind::InvalidData,
-            format!("{field_name} must be encoded as 0 or 1"),
-        )),
     }
 }
 
