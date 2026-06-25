@@ -5,6 +5,9 @@ pub mod error_payloads;
 pub mod hello_payloads;
 pub mod message_payloads;
 pub mod ping_payloads;
+pub mod queue_payloads;
+pub mod registration_payloads;
+pub mod subscription_payloads;
 
 pub use auth_payloads::{
     AuthAcceptPayload, AuthChallengePayload, AuthRejectPayload, AuthResponsePayload,
@@ -16,3 +19,6 @@ pub use hello_payloads::{
 };
 pub use message_payloads::{DeliverMessagePayload, SendMessagePayload};
 pub use ping_payloads::{PingPayload, PongPayload};
+pub use queue_payloads::{AckQueuedMessagePayload, FetchQueuedMessagesPayload, QueuedMessageDeliveryPayload};
+pub use registration_payloads::{RegisterDevicePayload, RegisterResponsePayload};
+pub use subscription_payloads::{QuerySubscriptionStatusPayload, SubscriptionStatusResponsePayload};

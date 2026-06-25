@@ -23,6 +23,19 @@ pub enum PacketType {
     SendMessage = 40,
     DeliverMessage = 41,
 
+    // Registration (42–43)
+    RegisterDevice = 42,
+    RegisterResponse = 43,
+
+    // Subscription (44–45)
+    QuerySubscriptionStatus = 44,
+    SubscriptionStatusResponse = 45,
+
+    // Offline message queue (46–48)
+    FetchQueuedMessages = 46,
+    QueuedMessageDelivery = 47,
+    AckQueuedMessage = 48,
+
     // Close / Error (240–255)
     Error = 254,
     Close = 255,
@@ -43,6 +56,13 @@ impl PacketType {
             21 => Ok(Self::Pong),
             40 => Ok(Self::SendMessage),
             41 => Ok(Self::DeliverMessage),
+            42 => Ok(Self::RegisterDevice),
+            43 => Ok(Self::RegisterResponse),
+            44 => Ok(Self::QuerySubscriptionStatus),
+            45 => Ok(Self::SubscriptionStatusResponse),
+            46 => Ok(Self::FetchQueuedMessages),
+            47 => Ok(Self::QueuedMessageDelivery),
+            48 => Ok(Self::AckQueuedMessage),
             254 => Ok(Self::Error),
             255 => Ok(Self::Close),
             other => Err(ProtocolError::UnknownPacketType(other)),
@@ -68,6 +88,20 @@ impl PacketType {
             Self::AuthAccept | Self::AuthReject => 0,
             Self::Ping | Self::Pong => 8,
             Self::SendMessage | Self::DeliverMessage => 65536,
+            // 2-byte len prefix + up to 128-byte username
+            Self::RegisterDevice => 130,
+            // 1-byte success flag + 2-byte len prefix + up to 256-byte message
+            Self::RegisterResponse => 259,
+            // empty request payload
+            Self::QuerySubscriptionStatus => 0,
+            // 1-byte is_active + 8-byte expiry timestamp
+            Self::SubscriptionStatusResponse => 9,
+            // empty request payload
+            Self::FetchQueuedMessages => 0,
+            // 8-byte queue_id + sender_id + content, same size class as DeliverMessage
+            Self::QueuedMessageDelivery => 65536,
+            // 8-byte queue_id
+            Self::AckQueuedMessage => 8,
             Self::Error | Self::Close => 1024,
         }
     }

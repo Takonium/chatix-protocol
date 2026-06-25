@@ -28,6 +28,13 @@ impl ConnectionState {
                     | PacketType::Pong
                     | PacketType::SendMessage
                     | PacketType::DeliverMessage
+                    | PacketType::RegisterDevice
+                    | PacketType::RegisterResponse
+                    | PacketType::QuerySubscriptionStatus
+                    | PacketType::SubscriptionStatusResponse
+                    | PacketType::FetchQueuedMessages
+                    | PacketType::QueuedMessageDelivery
+                    | PacketType::AckQueuedMessage
                     | PacketType::Close
                     | PacketType::Error
             ),
