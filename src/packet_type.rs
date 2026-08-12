@@ -26,6 +26,11 @@ pub enum PacketType {
     FriendRequestResult = 27,
     IncomingFriendRequest = 28,
     FriendRequestDecision = 29,
+    RemoveFriend = 30,
+    RemoveFriendResult = 31,
+    FriendRemovedNotification = 32,
+    FriendStatusUpdate = 33,
+    SendTypingIndicator = 34,
 
     // Messaging (40–79)
     SendMessage = 40,
@@ -33,6 +38,8 @@ pub enum PacketType {
     FetchQueuedMessages = 42,
     QueuedMessageDelivery = 43,
     AckQueuedMessage = 44,
+    MessageStatusUpdate = 45,
+    DeliveryReceipt = 46,
 
     // Close / Error (240–255)
     Error = 254,
@@ -60,11 +67,18 @@ impl PacketType {
             27 => Ok(Self::FriendRequestResult),
             28 => Ok(Self::IncomingFriendRequest),
             29 => Ok(Self::FriendRequestDecision),
+            30 => Ok(Self::RemoveFriend),
+            31 => Ok(Self::RemoveFriendResult),
+            32 => Ok(Self::FriendRemovedNotification),
+            33 => Ok(Self::FriendStatusUpdate),
+            34 => Ok(Self::SendTypingIndicator),
             40 => Ok(Self::SendMessage),
             41 => Ok(Self::DeliverMessage),
             42 => Ok(Self::FetchQueuedMessages),
             43 => Ok(Self::QueuedMessageDelivery),
             44 => Ok(Self::AckQueuedMessage),
+            45 => Ok(Self::MessageStatusUpdate),
+            46 => Ok(Self::DeliveryReceipt),
             254 => Ok(Self::Error),
             255 => Ok(Self::Close),
             other => Err(ProtocolError::UnknownPacketType(other)),
@@ -105,6 +119,16 @@ impl PacketType {
             Self::FriendRequestResult => 1,
             // 2-byte len prefix + up to 128-byte username + 1-byte accepted
             Self::FriendRequestDecision => 131,
+            // 2-byte len prefix + up to 128-byte username
+            Self::RemoveFriend | Self::FriendRemovedNotification | Self::SendTypingIndicator => 130,
+            // 1-byte status
+            Self::RemoveFriendResult => 1,
+            // 2-byte len prefix + up to 128-byte username + 1-byte status + 8-byte timestamp
+            Self::FriendStatusUpdate => 139,
+            // 8-byte message_id + 1-byte status
+            Self::MessageStatusUpdate => 9,
+            // 8-byte message_id
+            Self::DeliveryReceipt => 8,
             // empty request payload
             Self::FetchQueuedMessages => 0,
             // 8-byte queue_id + sender_id + content, same size class as DeliverMessage

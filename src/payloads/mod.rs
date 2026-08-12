@@ -12,8 +12,10 @@ pub mod registration_payloads;
 
 pub use account_payloads::{AccountStatusResponsePayload, QueryAccountStatusPayload};
 pub use friend_payloads::{
-    FriendRequestDecisionPayload, FriendRequestResultPayload, FriendRequestStatus,
-    IncomingFriendRequestPayload, SendFriendRequestPayload,
+    FriendRemovedNotificationPayload, FriendRequestDecisionPayload, FriendRequestResultPayload,
+    FriendRequestStatus, FriendStatus, FriendStatusUpdatePayload, IncomingFriendRequestPayload,
+    RemoveFriendPayload, RemoveFriendResultPayload, RemoveFriendStatus, SendFriendRequestPayload,
+    SendTypingIndicatorPayload,
 };
 pub use auth_payloads::{
     AuthAcceptPayload, AuthChallengePayload, AuthRejectPayload, AuthResponsePayload,
@@ -23,7 +25,11 @@ pub use error_payloads::ErrorPayload;
 pub use hello_payloads::{
     ClientFinishPayload, ClientHelloPayload, ServerAcceptPayload, ServerHelloPayload,
 };
-pub use message_payloads::{DeliverMessagePayload, SendMessagePayload};
+pub use message_payloads::{
+    DeliverMessagePayload, DeliveryReceiptPayload, MessageStatus, MessageStatusUpdatePayload,
+    SendMessagePayload,
+};
 pub use ping_payloads::{PingPayload, PongPayload};
 pub use queue_payloads::{AckQueuedMessagePayload, FetchQueuedMessagesPayload, QueuedMessageDeliveryPayload};
+
 pub use registration_payloads::{RegisterDevicePayload, RegisterResponsePayload};

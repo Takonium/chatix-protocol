@@ -1,6 +1,8 @@
 use super::common::{decode_bool, decode_sized_string, encode_sized_string, require_fully_consumed};
 use std::io::{self, Error, ErrorKind};
 
+// ── Friend request ─────────────────────────────────────────────────────────
+
 /// Sent by the client to request a friendship with another user by username.
 /// The server looks up the username and either forwards an IncomingFriendRequest
 /// to the target or responds with FriendRequestResult(UserNotFound).
@@ -104,6 +106,154 @@ impl FriendRequestDecisionPayload {
     }
 }
 
+// ── Friend removal ─────────────────────────────────────────────────────────
+
+/// Sent by the client to remove a friend by username.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveFriendPayload {
+    pub friend_username: String,
+}
+
+impl RemoveFriendPayload {
+    pub fn encode(&self) -> io::Result<Vec<u8>> {
+        encode_sized_string(&self.friend_username)
+    }
+
+    pub fn decode(bytes: &[u8]) -> io::Result<Self> {
+        let (friend_username, consumed) = decode_sized_string(bytes)?;
+        require_fully_consumed(bytes, consumed, "remove_friend")?;
+        Ok(Self { friend_username })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum RemoveFriendStatus {
+    Success = 0,
+    /// The specified username was not in the caller's friend list.
+    NotFound = 1,
+}
+
+impl RemoveFriendStatus {
+    fn from_u8(v: u8) -> io::Result<Self> {
+        match v {
+            0 => Ok(Self::Success),
+            1 => Ok(Self::NotFound),
+            _ => Err(Error::new(ErrorKind::InvalidData, "unknown remove_friend status")),
+        }
+    }
+}
+
+/// Sent by the server in response to RemoveFriendPayload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveFriendResultPayload {
+    pub status: RemoveFriendStatus,
+}
+
+impl RemoveFriendResultPayload {
+    pub fn encode(&self) -> Vec<u8> {
+        vec![self.status as u8]
+    }
+
+    pub fn decode(bytes: &[u8]) -> io::Result<Self> {
+        if bytes.len() != 1 {
+            return Err(Error::new(ErrorKind::InvalidData, "remove_friend_result must be exactly 1 byte"));
+        }
+        let status = RemoveFriendStatus::from_u8(bytes[0])?;
+        Ok(Self { status })
+    }
+}
+
+/// Sent by the server to the user who was removed, identifying who removed them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FriendRemovedNotificationPayload {
+    pub removed_by_username: String,
+}
+
+impl FriendRemovedNotificationPayload {
+    pub fn encode(&self) -> io::Result<Vec<u8>> {
+        encode_sized_string(&self.removed_by_username)
+    }
+
+    pub fn decode(bytes: &[u8]) -> io::Result<Self> {
+        let (removed_by_username, consumed) = decode_sized_string(bytes)?;
+        require_fully_consumed(bytes, consumed, "friend_removed_notification")?;
+        Ok(Self { removed_by_username })
+    }
+}
+
+// ── Friend status ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum FriendStatus {
+    Online = 0,
+    Offline = 1,
+    /// Friend is currently composing a message to this user.
+    IsTyping = 2,
+}
+
+impl FriendStatus {
+    fn from_u8(v: u8) -> io::Result<Self> {
+        match v {
+            0 => Ok(Self::Online),
+            1 => Ok(Self::Offline),
+            2 => Ok(Self::IsTyping),
+            _ => Err(Error::new(ErrorKind::InvalidData, "unknown friend_status value")),
+        }
+    }
+}
+
+/// Pushed by the server whenever a friend's status changes.
+/// `last_seen` is a Unix timestamp (seconds); only meaningful when status is Offline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FriendStatusUpdatePayload {
+    pub friend_username: String,
+    pub status: FriendStatus,
+    pub last_seen: u64,
+}
+
+impl FriendStatusUpdatePayload {
+    pub fn encode(&self) -> io::Result<Vec<u8>> {
+        let mut out = encode_sized_string(&self.friend_username)?;
+        out.push(self.status as u8);
+        out.extend_from_slice(&self.last_seen.to_be_bytes());
+        Ok(out)
+    }
+
+    pub fn decode(bytes: &[u8]) -> io::Result<Self> {
+        let (friend_username, consumed) = decode_sized_string(bytes)?;
+        let rest = &bytes[consumed..];
+        if rest.len() != 9 {
+            return Err(Error::new(ErrorKind::InvalidData, "friend_status_update missing status/last_seen fields"));
+        }
+        let status = FriendStatus::from_u8(rest[0])?;
+        let last_seen = u64::from_be_bytes(rest[1..9].try_into().map_err(|_| {
+            Error::new(ErrorKind::InvalidData, "failed to decode friend_status_update last_seen")
+        })?);
+        Ok(Self { friend_username, status, last_seen })
+    }
+}
+
+/// Sent by the client to signal that it is composing a message.
+/// The server forwards this as FriendStatusUpdate(IsTyping) to the recipient.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SendTypingIndicatorPayload {
+    pub recipient_username: String,
+}
+
+impl SendTypingIndicatorPayload {
+    pub fn encode(&self) -> io::Result<Vec<u8>> {
+        encode_sized_string(&self.recipient_username)
+    }
+
+    pub fn decode(bytes: &[u8]) -> io::Result<Self> {
+        let (recipient_username, consumed) = decode_sized_string(bytes)?;
+        require_fully_consumed(bytes, consumed, "send_typing_indicator")?;
+        Ok(Self { recipient_username })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +326,66 @@ mod tests {
     fn friend_request_decision_rejects_missing_bool() {
         let enc = SendFriendRequestPayload { target_username: "alice".to_string() }.encode().unwrap();
         assert!(FriendRequestDecisionPayload::decode(&enc).is_err());
+    }
+
+    #[test]
+    fn remove_friend_roundtrip() {
+        let p = RemoveFriendPayload { friend_username: "bob".to_string() };
+        let decoded = RemoveFriendPayload::decode(&p.encode().unwrap()).unwrap();
+        assert_eq!(decoded, p);
+    }
+
+    #[test]
+    fn remove_friend_result_roundtrip_all_statuses() {
+        for status in [RemoveFriendStatus::Success, RemoveFriendStatus::NotFound] {
+            let p = RemoveFriendResultPayload { status };
+            let decoded = RemoveFriendResultPayload::decode(&p.encode()).unwrap();
+            assert_eq!(decoded, p);
+        }
+    }
+
+    #[test]
+    fn remove_friend_result_rejects_unknown_status() {
+        assert!(RemoveFriendResultPayload::decode(&[5]).is_err());
+    }
+
+    #[test]
+    fn friend_removed_notification_roundtrip() {
+        let p = FriendRemovedNotificationPayload { removed_by_username: "alice".to_string() };
+        let decoded = FriendRemovedNotificationPayload::decode(&p.encode().unwrap()).unwrap();
+        assert_eq!(decoded, p);
+    }
+
+    #[test]
+    fn friend_status_update_roundtrip_all_statuses() {
+        for status in [FriendStatus::Online, FriendStatus::Offline, FriendStatus::IsTyping] {
+            let p = FriendStatusUpdatePayload { friend_username: "carol".to_string(), status, last_seen: 1_700_000_000 };
+            let decoded = FriendStatusUpdatePayload::decode(&p.encode().unwrap()).unwrap();
+            assert_eq!(decoded, p);
+        }
+    }
+
+    #[test]
+    fn friend_status_update_rejects_unknown_status() {
+        let p = FriendStatusUpdatePayload { friend_username: "carol".to_string(), status: FriendStatus::Online, last_seen: 0 };
+        let mut enc = p.encode().unwrap();
+        // status byte is right after the username string
+        let username_len = 2 + "carol".len();
+        enc[username_len] = 9;
+        assert!(FriendStatusUpdatePayload::decode(&enc).is_err());
+    }
+
+    #[test]
+    fn friend_status_update_rejects_truncated_payload() {
+        let p = FriendStatusUpdatePayload { friend_username: "carol".to_string(), status: FriendStatus::Online, last_seen: 0 };
+        let enc = p.encode().unwrap();
+        assert!(FriendStatusUpdatePayload::decode(&enc[..enc.len() - 1]).is_err());
+    }
+
+    #[test]
+    fn send_typing_indicator_roundtrip() {
+        let p = SendTypingIndicatorPayload { recipient_username: "dave".to_string() };
+        let decoded = SendTypingIndicatorPayload::decode(&p.encode().unwrap()).unwrap();
+        assert_eq!(decoded, p);
     }
 }
