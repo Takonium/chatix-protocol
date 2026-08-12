@@ -18,23 +18,21 @@ pub enum PacketType {
     // Control (20–39)
     Ping = 20,
     Pong = 21,
+    RegisterDevice = 22,
+    RegisterResponse = 23,
+    QueryAccountStatus = 24,
+    AccountStatusResponse = 25,
+    SendFriendRequest = 26,
+    FriendRequestResult = 27,
+    IncomingFriendRequest = 28,
+    FriendRequestDecision = 29,
 
     // Messaging (40–79)
     SendMessage = 40,
     DeliverMessage = 41,
-
-    // Registration (42–43)
-    RegisterDevice = 42,
-    RegisterResponse = 43,
-
-    // Account status — ban + subscription combined (44–45)
-    QueryAccountStatus = 44,
-    AccountStatusResponse = 45,
-
-    // Offline message queue (46–48)
-    FetchQueuedMessages = 46,
-    QueuedMessageDelivery = 47,
-    AckQueuedMessage = 48,
+    FetchQueuedMessages = 42,
+    QueuedMessageDelivery = 43,
+    AckQueuedMessage = 44,
 
     // Close / Error (240–255)
     Error = 254,
@@ -54,15 +52,19 @@ impl PacketType {
             8 => Ok(Self::AuthReject),
             20 => Ok(Self::Ping),
             21 => Ok(Self::Pong),
+            22 => Ok(Self::RegisterDevice),
+            23 => Ok(Self::RegisterResponse),
+            24 => Ok(Self::QueryAccountStatus),
+            25 => Ok(Self::AccountStatusResponse),
+            26 => Ok(Self::SendFriendRequest),
+            27 => Ok(Self::FriendRequestResult),
+            28 => Ok(Self::IncomingFriendRequest),
+            29 => Ok(Self::FriendRequestDecision),
             40 => Ok(Self::SendMessage),
             41 => Ok(Self::DeliverMessage),
-            42 => Ok(Self::RegisterDevice),
-            43 => Ok(Self::RegisterResponse),
-            44 => Ok(Self::QueryAccountStatus),
-            45 => Ok(Self::AccountStatusResponse),
-            46 => Ok(Self::FetchQueuedMessages),
-            47 => Ok(Self::QueuedMessageDelivery),
-            48 => Ok(Self::AckQueuedMessage),
+            42 => Ok(Self::FetchQueuedMessages),
+            43 => Ok(Self::QueuedMessageDelivery),
+            44 => Ok(Self::AckQueuedMessage),
             254 => Ok(Self::Error),
             255 => Ok(Self::Close),
             other => Err(ProtocolError::UnknownPacketType(other)),
@@ -97,6 +99,12 @@ impl PacketType {
             // 1-byte is_banned + 2-byte len prefix + up to 256-byte ban_reason
             // + 1-byte subscription_active + 8-byte expiry timestamp
             Self::AccountStatusResponse => 268,
+            // 2-byte len prefix + up to 128-byte username
+            Self::SendFriendRequest | Self::IncomingFriendRequest => 130,
+            // 1-byte status
+            Self::FriendRequestResult => 1,
+            // 2-byte len prefix + up to 128-byte username + 1-byte accepted
+            Self::FriendRequestDecision => 131,
             // empty request payload
             Self::FetchQueuedMessages => 0,
             // 8-byte queue_id + sender_id + content, same size class as DeliverMessage

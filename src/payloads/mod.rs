@@ -3,6 +3,7 @@ pub mod auth_payloads;
 pub mod close_payloads;
 mod common;
 pub mod error_payloads;
+pub mod friend_payloads;
 pub mod hello_payloads;
 pub mod message_payloads;
 pub mod ping_payloads;
@@ -10,6 +11,10 @@ pub mod queue_payloads;
 pub mod registration_payloads;
 
 pub use account_payloads::{AccountStatusResponsePayload, QueryAccountStatusPayload};
+pub use friend_payloads::{
+    FriendRequestDecisionPayload, FriendRequestResultPayload, FriendRequestStatus,
+    IncomingFriendRequestPayload, SendFriendRequestPayload,
+};
 pub use auth_payloads::{
     AuthAcceptPayload, AuthChallengePayload, AuthRejectPayload, AuthResponsePayload,
 };
