@@ -373,7 +373,7 @@ mod tests {
 
     #[test]
     fn blob_minimum_size_matches_constant() {
-        let (recipient_sk, recipient_pk) = generate_e2e_keypair().unwrap();
+        let (_recipient_sk, recipient_pk) = generate_e2e_keypair().unwrap();
         let (sender_sk, _) = generate_e2e_keypair().unwrap();
 
         let blob = encrypt_and_sign(
