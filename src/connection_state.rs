@@ -28,6 +28,8 @@ impl ConnectionState {
                     | PacketType::Pong
                     | PacketType::SendMessage
                     | PacketType::DeliverMessage
+                    | PacketType::MessageStatusUpdate
+                    | PacketType::DeliveryReceipt
                     | PacketType::RegisterDevice
                     | PacketType::RegisterResponse
                     | PacketType::QueryAccountStatus
@@ -94,6 +96,13 @@ mod tests {
         let s = ConnectionState::AwaitingAuth;
         assert!(s.validate_incoming(PacketType::SendMessage).is_err());
         assert!(s.validate_incoming(PacketType::Ping).is_err());
+    }
+
+    #[test]
+    fn allows_delivery_tracking_packets_once_established() {
+        let s = ConnectionState::Established;
+        assert!(s.validate_incoming(PacketType::MessageStatusUpdate).is_ok());
+        assert!(s.validate_incoming(PacketType::DeliveryReceipt).is_ok());
     }
 
     #[test]
