@@ -87,11 +87,10 @@ pub struct E2ePublicKey {
 /// Generates a fresh E2E identity key pair.
 pub fn generate_e2e_keypair() -> Result<(E2eSecretKey, E2ePublicKey), ProtocolError> {
     use ring::rand::SecureRandom;
-    let mut rng = rand_core::OsRng;
     let ring_rng = ring::rand::SystemRandom::new();
 
     // X25519 long-term keypair.
-    let x25519_secret = StaticSecret::random_from_rng(&mut rng);
+    let x25519_secret = StaticSecret::random();
     let x25519_public: [u8; 32] = PublicKey::from(&x25519_secret).to_bytes();
     let x25519_secret_bytes: [u8; 32] = x25519_secret.to_bytes();
 
@@ -153,10 +152,8 @@ pub fn encrypt_and_sign(
     recipient_ml_kem_ek: &[u8; ML_KEM_768_EK_SIZE],
     sender_signing_seed: &[u8; 32],
 ) -> Result<Vec<u8>, ProtocolError> {
-    let mut rng = rand_core::OsRng;
-
     // ── Key exchange ──
-    let sender_ephemeral = EphemeralSecret::random_from_rng(&mut rng);
+    let sender_ephemeral = EphemeralSecret::random();
     let sender_x25519_pk: [u8; 32] = PublicKey::from(&sender_ephemeral).to_bytes();
     let recipient_pk = PublicKey::from(*recipient_x25519_pk);
     let x25519_shared = sender_ephemeral.diffie_hellman(&recipient_pk);

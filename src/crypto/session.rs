@@ -52,9 +52,7 @@ pub struct ClientHandshakeState {
 
 impl ClientHandshakeState {
     pub fn generate() -> Result<Self, ProtocolError> {
-        let mut rng = rand_core::OsRng;
-
-        let x25519_secret = EphemeralSecret::random_from_rng(&mut rng);
+        let x25519_secret = EphemeralSecret::random();
         let x25519_public: [u8; 32] = PublicKey::from(&x25519_secret).to_bytes();
 
         let (ml_kem_dk, ml_kem_ek) = MlKem768::generate_keypair();
@@ -113,9 +111,7 @@ impl ServerHandshakeState {
         client_x25519_pk: [u8; 32],
         client_ml_kem_ek: &[u8; ML_KEM_768_EK_SIZE],
     ) -> Result<Self, ProtocolError> {
-        let mut rng = rand_core::OsRng;
-
-        let server_secret = EphemeralSecret::random_from_rng(&mut rng);
+        let server_secret = EphemeralSecret::random();
         let server_public: [u8; 32] = PublicKey::from(&server_secret).to_bytes();
 
         let client_pk = PublicKey::from(client_x25519_pk);
