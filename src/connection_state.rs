@@ -37,6 +37,15 @@ impl ConnectionState {
                     | PacketType::FetchQueuedMessages
                     | PacketType::QueuedMessageDelivery
                     | PacketType::AckQueuedMessage
+                    | PacketType::SendFriendRequest
+                    | PacketType::FriendRequestResult
+                    | PacketType::IncomingFriendRequest
+                    | PacketType::FriendRequestDecision
+                    | PacketType::RemoveFriend
+                    | PacketType::RemoveFriendResult
+                    | PacketType::FriendRemovedNotification
+                    | PacketType::FriendStatusUpdate
+                    | PacketType::SendTypingIndicator
                     | PacketType::Close
                     | PacketType::Error
             ),
