@@ -2,4 +2,4 @@
 
 ## Reporting a Vulnerability
 
-Please report any security vulnerabilities on the "Issues" tab.
+Please email me at ```attila.takacs23@gmail.com``` to report any security vulnerabilities you may find.
