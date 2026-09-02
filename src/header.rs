@@ -54,8 +54,8 @@ impl PacketHeader {
             header_len: bytes[7],
             payload_len: u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]),
             sequence: u64::from_be_bytes([
-                bytes[12], bytes[13], bytes[14], bytes[15],
-                bytes[16], bytes[17], bytes[18], bytes[19],
+                bytes[12], bytes[13], bytes[14], bytes[15], bytes[16], bytes[17], bytes[18],
+                bytes[19],
             ]),
             reserved: u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]),
         }
@@ -86,25 +86,19 @@ impl PacketHeader {
     pub fn is_encrypted(&self) -> bool {
         (self.flags & flags::ENCRYPTED) != 0
     }
-
-    pub fn requires_ack(&self) -> bool {
-        (self.flags & flags::ACK_REQUIRED) != 0
-    }
-
-    pub fn is_response(&self) -> bool {
-        (self.flags & flags::IS_RESPONSE) != 0
-    }
-
-    pub fn has_error(&self) -> bool {
-        (self.flags & flags::HAS_ERROR) != 0
-    }
 }
 
+/// Bits of `PacketHeader::flags`.
+///
+/// Only `ENCRYPTED` is defined: earlier drafts also reserved bits for
+/// ack-required/is-response/has-error signaling, but nothing in this crate
+/// ever set or read them — those concerns are already handled by dedicated
+/// packet types instead (`AckQueuedMessage`/`DeliveryReceipt`,
+/// `AuthAccept`/`AuthReject`, `Error`), so the unused bits were removed
+/// rather than kept as an implemented-looking API that did nothing. The
+/// remaining 7 bits of this byte are free for future use.
 pub mod flags {
     pub const ENCRYPTED: u8 = 1 << 0;
-    pub const ACK_REQUIRED: u8 = 1 << 1;
-    pub const IS_RESPONSE: u8 = 1 << 2;
-    pub const HAS_ERROR: u8 = 1 << 3;
 }
 
 #[cfg(test)]
@@ -113,7 +107,10 @@ mod tests {
 
     #[test]
     fn header_roundtrip() {
-        let header = PacketHeader::new(10, flags::ENCRYPTED | flags::ACK_REQUIRED, 128, 42);
+        // Exercise more than one flag bit round-tripping, not just ENCRYPTED
+        // alone — 0b0000_0010 stands in for one of the currently-unused
+        // reserved bits.
+        let header = PacketHeader::new(10, flags::ENCRYPTED | 0b0000_0010, 128, 42);
         let bytes = header.to_bytes();
         let decoded = PacketHeader::from_bytes(bytes);
         assert_eq!(header, decoded);

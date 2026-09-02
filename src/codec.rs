@@ -1,9 +1,10 @@
-use ring::aead::{self, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
+use ring::aead::{self, AES_256_GCM, LessSafeKey, Nonce, UnboundKey};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use zeroize::Zeroize;
 
+use crate::crypto::e2e::GCM_TAG_LEN;
 use crate::error::ProtocolError;
-use crate::header::{PacketHeader, CHATIX_HEADER_SIZE, flags};
+use crate::header::{CHATIX_HEADER_SIZE, PacketHeader, flags};
 use crate::packet_type::PacketType;
 use crate::raw_packet::RawPacket;
 
@@ -50,7 +51,10 @@ impl PacketCodec {
     /// `outbound_key` encrypts packets this side sends.
     /// `inbound_key` decrypts packets this side receives.
     pub fn establish_session(&mut self, outbound_key: [u8; 32], inbound_key: [u8; 32]) {
-        self.session = Some(SessionCipher { outbound_key, inbound_key });
+        self.session = Some(SessionCipher {
+            outbound_key,
+            inbound_key,
+        });
     }
 
     pub async fn read_packet<R>(&mut self, reader: &mut R) -> Result<RawPacket, ProtocolError>
@@ -63,8 +67,37 @@ impl PacketCodec {
         let mut header = PacketHeader::from_bytes(header_bytes);
         header.validate()?;
 
+        // Once a session is established, every incoming packet must be
+        // encrypted — there is no legitimate reason for a plaintext packet
+        // to arrive after this point. Without this check, a network
+        // attacker who cannot decrypt or forge anything could still inject
+        // a plaintext packet with the ENCRYPTED flag simply left unset, and
+        // this codec would hand it to the caller as if it were genuine,
+        // fully bypassing the session's confidentiality and authenticity
+        // guarantees for that packet.
+        if self.session.is_some() && !header.is_encrypted() {
+            return Err(ProtocolError::EncryptionRequired);
+        }
+
         // Reject unknown packet types immediately.
-        PacketType::from_u8(header.packet_type)?;
+        let packet_type = PacketType::from_u8(header.packet_type)?;
+
+        // Enforce the per-packet-type payload ceiling, not just the global
+        // MAX_PAYLOAD_LEN cap. Encrypted frames carry an extra GCM_TAG_LEN
+        // bytes of ciphertext overhead over the plaintext limit.
+        let max_for_type = if header.is_encrypted() {
+            packet_type
+                .max_payload_size()
+                .saturating_add(GCM_TAG_LEN as u32)
+        } else {
+            packet_type.max_payload_size()
+        };
+        if header.payload_len > max_for_type {
+            return Err(ProtocolError::PayloadTooLarge {
+                size: header.payload_len,
+                max: max_for_type,
+            });
+        }
 
         self.validate_sequence(header.sequence)?;
 
@@ -85,7 +118,7 @@ impl PacketCodec {
             let plaintext_len = opening_key
                 .open_in_place(
                     Nonce::assume_unique_for_key(nonce),
-                    aead::Aad::empty(),
+                    aead::Aad::from(header_aad(header.packet_type, header.flags)),
                     &mut payload,
                 )
                 .map_err(|_| ProtocolError::CryptoError)?
@@ -116,6 +149,12 @@ impl PacketCodec {
             .ok_or(ProtocolError::CryptoError)?;
 
         if let Some(ref cipher) = self.session {
+            // Set ENCRYPTED before sealing (not after) so the AAD below
+            // binds the exact flags byte the receiver will read off the
+            // wire — sealing and opening must derive identical AAD from
+            // identical header bytes for the tag to verify.
+            flags |= flags::ENCRYPTED;
+
             let nonce = seq_nonce(seq);
             let key = UnboundKey::new(&AES_256_GCM, &cipher.outbound_key)
                 .map_err(|_| ProtocolError::CryptoError)?;
@@ -123,12 +162,10 @@ impl PacketCodec {
             sealing_key
                 .seal_in_place_append_tag(
                     Nonce::assume_unique_for_key(nonce),
-                    aead::Aad::empty(),
+                    aead::Aad::from(header_aad(packet_type.as_u8(), flags)),
                     &mut payload,
                 )
                 .map_err(|_| ProtocolError::CryptoError)?;
-            // Signal to the receiver that this frame is encrypted.
-            flags |= flags::ENCRYPTED;
         }
 
         let header = PacketHeader::new(packet_type.as_u8(), flags, payload.len() as u32, seq);
@@ -165,4 +202,147 @@ fn seq_nonce(seq: u64) -> [u8; 12] {
     let mut nonce = [0u8; 12];
     nonce[4..12].copy_from_slice(&seq.to_be_bytes());
     nonce
+}
+
+/// Additional authenticated data (AAD) bound into the AES-GCM tag for an
+/// encrypted frame.
+///
+/// The packet header travels in the clear (it has to — the receiver needs
+/// `packet_type` and `flags` before it can even locate, let alone decrypt,
+/// the payload), so without this the AEAD tag would only protect the
+/// payload bytes: an on-path attacker could take a legitimately-encrypted,
+/// correctly-tagged packet and relabel its `packet_type` in transit,
+/// causing the receiver to decrypt successfully (the ciphertext and tag
+/// are untouched) and then misinterpret the payload as a different message
+/// type than the sender intended — a type-confusion attack that costs the
+/// attacker nothing cryptographically. Binding `packet_type` and `flags`
+/// into the AAD makes any such relabeling invalidate the tag instead.
+///
+/// `sequence` doesn't need to be included here: it already determines the
+/// AES-GCM nonce (`seq_nonce`), so tampering with it makes the receiver
+/// derive the wrong nonce and fail to open the ciphertext regardless.
+fn header_aad(packet_type: u8, flags: u8) -> [u8; 2] {
+    [packet_type, flags]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::header::CHATIX_HEADER_LEN;
+    use std::io::Cursor;
+
+    /// Hand-builds a raw (unencrypted) frame: header + payload bytes.
+    fn raw_frame(packet_type: u8, payload_len: u32, seq: u64) -> Vec<u8> {
+        let header = PacketHeader::new(packet_type, 0, payload_len, seq);
+        let mut bytes = header.to_bytes().to_vec();
+        bytes.extend(std::iter::repeat(0xAA).take(payload_len as usize));
+        bytes
+    }
+
+    #[tokio::test]
+    async fn rejects_oversized_payload_for_packet_type() {
+        // Ping (type 20) has a declared max of 8 bytes, well under the
+        // global MAX_PAYLOAD_LEN — a codec that only checks the global
+        // cap would wrongly accept this.
+        let oversized = CHATIX_HEADER_LEN as u32; // arbitrary, > 8
+        let frame = raw_frame(PacketType::Ping.as_u8(), oversized, 1);
+        let mut cursor = Cursor::new(frame);
+        let mut codec = PacketCodec::new();
+
+        let result = codec.read_packet(&mut cursor).await;
+        assert!(matches!(result, Err(ProtocolError::PayloadTooLarge { .. })));
+    }
+
+    #[tokio::test]
+    async fn accepts_payload_within_packet_type_limit() {
+        let frame = raw_frame(PacketType::Ping.as_u8(), 8, 1);
+        let mut cursor = Cursor::new(frame);
+        let mut codec = PacketCodec::new();
+
+        let packet = codec.read_packet(&mut cursor).await.unwrap();
+        assert_eq!(packet.header.payload_len, 8);
+    }
+
+    /// A pair of distinct 32-byte keys standing in for a real HKDF-derived
+    /// `SessionKeys` pair, so tests don't need to run the full handshake.
+    fn sample_session_keys() -> ([u8; 32], [u8; 32]) {
+        ([0x11u8; 32], [0x22u8; 32])
+    }
+
+    #[tokio::test]
+    async fn encrypted_roundtrip_succeeds() {
+        let (key_a, key_b) = sample_session_keys();
+
+        let mut sender = PacketCodec::new();
+        sender.establish_session(key_a, key_b);
+
+        let mut wire_bytes = Vec::new();
+        let plaintext = b"PINGDATA".to_vec(); // 8 bytes: Ping's plaintext limit
+        sender
+            .write_packet(&mut wire_bytes, PacketType::Ping, 0, plaintext.clone())
+            .await
+            .unwrap();
+
+        // Receiver's inbound key (key_a) must match the sender's outbound
+        // key (key_a) for this to decrypt — same pairing convention
+        // `establish_session`'s doc comment describes for client/server.
+        let mut receiver = PacketCodec::new();
+        receiver.establish_session(key_b, key_a);
+
+        let mut cursor = Cursor::new(wire_bytes);
+        let packet = receiver.read_packet(&mut cursor).await.unwrap();
+
+        assert!(packet.header.is_encrypted());
+        assert_eq!(packet.payload, plaintext);
+    }
+
+    #[tokio::test]
+    async fn rejects_unencrypted_packet_once_session_established() {
+        // Simulates a network attacker injecting a plaintext packet into a
+        // connection that should be fully encrypted post-handshake — the
+        // attacker has no key, but until this check existed, the codec
+        // would still accept it as long as ENCRYPTED was left unset.
+        let (key_a, key_b) = sample_session_keys();
+        let mut receiver = PacketCodec::new();
+        receiver.establish_session(key_b, key_a);
+
+        let injected = raw_frame(PacketType::Ping.as_u8(), 8, 1); // flags = 0, not encrypted
+        let mut cursor = Cursor::new(injected);
+
+        let result = receiver.read_packet(&mut cursor).await;
+        assert!(matches!(result, Err(ProtocolError::EncryptionRequired)));
+    }
+
+    #[tokio::test]
+    async fn rejects_packet_with_tampered_packet_type_after_encryption() {
+        // Demonstrates the header-AAD fix: DeliveryReceipt and
+        // AckQueuedMessage both have an 8-byte plaintext shape, so relabeling
+        // one as the other in transit must invalidate the AEAD tag rather
+        // than silently letting the receiver misinterpret the payload.
+        let (key_a, key_b) = sample_session_keys();
+
+        let mut sender = PacketCodec::new();
+        sender.establish_session(key_a, key_b);
+
+        let mut wire_bytes = Vec::new();
+        sender
+            .write_packet(
+                &mut wire_bytes,
+                PacketType::DeliveryReceipt,
+                0,
+                vec![0u8; 8],
+            )
+            .await
+            .unwrap();
+
+        // Byte 5 of the header is packet_type (see PacketHeader::to_bytes).
+        wire_bytes[5] = PacketType::AckQueuedMessage.as_u8();
+
+        let mut receiver = PacketCodec::new();
+        receiver.establish_session(key_b, key_a);
+
+        let mut cursor = Cursor::new(wire_bytes);
+        let result = receiver.read_packet(&mut cursor).await;
+        assert!(matches!(result, Err(ProtocolError::CryptoError)));
+    }
 }

@@ -25,16 +25,14 @@
 /// ```
 use hkdf::Hkdf;
 use ml_dsa::{
-    EncodedSignature, EncodedVerifyingKey,
-    Generate as DsaGenerate, Keypair,
-    MlDsa65, Signature as DsaSignature,
-    SigningKey, Signer, Verifier, VerifyingKey,
+    EncodedSignature, EncodedVerifyingKey, Generate as DsaGenerate, Keypair, MlDsa65,
+    Signature as DsaSignature, Signer, SigningKey, Verifier, VerifyingKey,
 };
 use ml_kem::{
-    Ciphertext, Decapsulate, DecapsulationKey768, Encapsulate,
-    EncapsulationKey768, KeyExport, MlKem768,
+    Ciphertext, Decapsulate, DecapsulationKey768, Encapsulate, EncapsulationKey768, KeyExport,
+    MlKem768,
 };
-use ring::aead::{self, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
+use ring::aead::{self, AES_256_GCM, LessSafeKey, Nonce, UnboundKey};
 use sha2::Sha256;
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -42,7 +40,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use crate::crypto::session::{ML_KEM_768_CT_SIZE, ML_KEM_768_EK_SIZE};
 use crate::error::ProtocolError;
 
-// ── Wire format constants ──────────────────────────────────────────────────
+// Wire format constants
 
 pub const NONCE_LEN: usize = 12;
 pub const GCM_TAG_LEN: usize = 16;
@@ -60,7 +58,7 @@ const AES_NONCE_END: usize = ML_KEM_CT_END + NONCE_LEN;
 /// Minimum blob length (empty plaintext): all fixed-size fields + GCM tag + signature.
 pub const MIN_BLOB_LEN: usize = AES_NONCE_END + GCM_TAG_LEN + ML_DSA_65_SIG_SIZE;
 
-// ── Key pair types ─────────────────────────────────────────────────────────
+// Key pair types
 
 /// All secret key material for one E2E identity. Store securely; never log or transmit.
 #[derive(Zeroize, ZeroizeOnDrop)]
@@ -96,9 +94,11 @@ pub fn generate_e2e_keypair() -> Result<(E2eSecretKey, E2ePublicKey), ProtocolEr
 
     // ML-KEM-768: derive from a random 64-byte seed so the seed can be stored compactly.
     let mut ml_kem_seed = [0u8; 64];
-    ring_rng.fill(&mut ml_kem_seed).map_err(|_| ProtocolError::CryptoError)?;
-    let seed_arr = ml_kem::Seed::try_from(ml_kem_seed.as_slice())
+    ring_rng
+        .fill(&mut ml_kem_seed)
         .map_err(|_| ProtocolError::CryptoError)?;
+    let seed_arr =
+        ml_kem::Seed::try_from(ml_kem_seed.as_slice()).map_err(|_| ProtocolError::CryptoError)?;
     let ml_kem_dk = DecapsulationKey768::from_seed(seed_arr);
     let ml_kem_ek_obj = ml_kem_dk.encapsulation_key();
     let ek_encoded = ml_kem_ek_obj.to_bytes();
@@ -139,7 +139,7 @@ pub fn generate_e2e_keypair() -> Result<(E2eSecretKey, E2ePublicKey), ProtocolEr
     ))
 }
 
-// ── Core operations ────────────────────────────────────────────────────────
+// Core operations
 
 /// Encrypts `plaintext` for the recipient and signs the blob with the sender's key.
 ///
@@ -152,7 +152,7 @@ pub fn encrypt_and_sign(
     recipient_ml_kem_ek: &[u8; ML_KEM_768_EK_SIZE],
     sender_signing_seed: &[u8; 32],
 ) -> Result<Vec<u8>, ProtocolError> {
-    // ── Key exchange ──
+    // Key exchange
     let sender_ephemeral = EphemeralSecret::random();
     let sender_x25519_pk: [u8; 32] = PublicKey::from(&sender_ephemeral).to_bytes();
     let recipient_pk = PublicKey::from(*recipient_x25519_pk);
@@ -166,7 +166,7 @@ pub fn encrypt_and_sign(
     let mut ml_kem_ct = [0u8; ML_KEM_768_CT_SIZE];
     ml_kem_ct.copy_from_slice(ct_bytes);
 
-    // ── Derive content key and encrypt ──
+    // Derive content key and encrypt
     let mut content_key = derive_e2e_key(x25519_shared.as_bytes(), kyber_shared.as_ref())?;
     let nonce_bytes = random_nonce()?;
     let nonce = Nonce::assume_unique_for_key(nonce_bytes);
@@ -179,14 +179,14 @@ pub fn encrypt_and_sign(
         .map_err(|_| ProtocolError::CryptoError)?;
     content_key.zeroize();
 
-    // ── Assemble unsigned blob ──
+    // Assemble unsigned blob
     let mut blob = Vec::with_capacity(AES_NONCE_END + ciphertext.len() + ML_DSA_65_SIG_SIZE);
     blob.extend_from_slice(&sender_x25519_pk);
     blob.extend_from_slice(&ml_kem_ct);
     blob.extend_from_slice(&nonce_bytes);
     blob.extend_from_slice(&ciphertext);
 
-    // ── Sign the blob ──
+    // Sign the blob
     let dsa_seed_arr = ml_dsa::Seed::try_from(sender_signing_seed.as_slice())
         .map_err(|_| ProtocolError::CryptoError)?;
     let dsa_sk = SigningKey::<MlDsa65>::from_seed(&dsa_seed_arr);
@@ -212,23 +212,22 @@ pub fn verify_and_decrypt(
         return Err(ProtocolError::CryptoError);
     }
 
-    // ── Split signed part and signature ──
+    // Split signed part and signature
     let (signed_part, sig_bytes) = blob.split_at(blob.len() - ML_DSA_65_SIG_SIZE);
 
-    // ── Verify signature before touching any crypto state ──
+    // Verify signature before touching any crypto state
     let vk_arr = EncodedVerifyingKey::<MlDsa65>::try_from(sender_verifying_key.as_slice())
         .map_err(|_| ProtocolError::CryptoError)?;
     let dsa_vk = VerifyingKey::<MlDsa65>::decode(&vk_arr);
 
-    let sig_arr = EncodedSignature::<MlDsa65>::try_from(sig_bytes)
-        .map_err(|_| ProtocolError::CryptoError)?;
-    let signature = DsaSignature::<MlDsa65>::decode(&sig_arr)
-        .ok_or(ProtocolError::CryptoError)?;
+    let sig_arr =
+        EncodedSignature::<MlDsa65>::try_from(sig_bytes).map_err(|_| ProtocolError::CryptoError)?;
+    let signature = DsaSignature::<MlDsa65>::decode(&sig_arr).ok_or(ProtocolError::CryptoError)?;
     dsa_vk
         .verify(signed_part, &signature)
         .map_err(|_| ProtocolError::CryptoError)?;
 
-    // ── Parse key exchange material ──
+    // Parse key exchange material
     let sender_x25519_pk: [u8; 32] = signed_part[..SENDER_X25519_END]
         .try_into()
         .map_err(|_| ProtocolError::CryptoError)?;
@@ -238,7 +237,7 @@ pub fn verify_and_decrypt(
         .map_err(|_| ProtocolError::CryptoError)?;
     let aes_ct = &signed_part[AES_NONCE_END..];
 
-    // ── Key exchange – recipient side ──
+    // Key exchange - recipient side
     let recipient_sk = StaticSecret::from(*recipient_x25519_sk);
     let sender_pk = PublicKey::from(sender_x25519_pk);
     let x25519_shared = recipient_sk.diffie_hellman(&sender_pk);
@@ -247,12 +246,12 @@ pub fn verify_and_decrypt(
         .map_err(|_| ProtocolError::CryptoError)?;
     let ml_kem_dk = DecapsulationKey768::from_seed(ml_kem_seed_arr);
 
-    let ct_arr = ml_kem::array::Array::try_from(ml_kem_ct_bytes)
-        .map_err(|_| ProtocolError::CryptoError)?;
+    let ct_arr =
+        ml_kem::array::Array::try_from(ml_kem_ct_bytes).map_err(|_| ProtocolError::CryptoError)?;
     let ct = Ciphertext::<MlKem768>::from(ct_arr);
     let kyber_shared = ml_kem_dk.decapsulate(&ct);
 
-    // ── Derive content key and decrypt ──
+    // Derive content key and decrypt
     let mut content_key = derive_e2e_key(x25519_shared.as_bytes(), kyber_shared.as_ref())?;
     let nonce = Nonce::assume_unique_for_key(aes_nonce_bytes);
     let opening_key = LessSafeKey::new(
@@ -267,7 +266,7 @@ pub fn verify_and_decrypt(
     Ok(plaintext.to_vec())
 }
 
-// ── Internal helpers ───────────────────────────────────────────────────────
+// Internal helpers
 
 fn derive_e2e_key(x25519_shared: &[u8], kyber_shared: &[u8]) -> Result<[u8; 32], ProtocolError> {
     let mut ikm = Vec::with_capacity(x25519_shared.len() + kyber_shared.len());
@@ -285,11 +284,12 @@ fn random_nonce() -> Result<[u8; NONCE_LEN], ProtocolError> {
     use ring::rand::{SecureRandom, SystemRandom};
     let rng = SystemRandom::new();
     let mut nonce = [0u8; NONCE_LEN];
-    rng.fill(&mut nonce).map_err(|_| ProtocolError::CryptoError)?;
+    rng.fill(&mut nonce)
+        .map_err(|_| ProtocolError::CryptoError)?;
     Ok(nonce)
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────────
+// Tests
 
 #[cfg(test)]
 mod tests {
@@ -336,13 +336,15 @@ mod tests {
         // Flip a bit in the AES ciphertext region.
         blob[AES_NONCE_END] ^= 0xff;
 
-        assert!(verify_and_decrypt(
-            &blob,
-            &recipient_sk.x25519_secret,
-            &recipient_sk.ml_kem_seed,
-            &sender_pk.dsa_verifying_key,
-        )
-        .is_err());
+        assert!(
+            verify_and_decrypt(
+                &blob,
+                &recipient_sk.x25519_secret,
+                &recipient_sk.ml_kem_seed,
+                &sender_pk.dsa_verifying_key,
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -359,13 +361,15 @@ mod tests {
         )
         .unwrap();
 
-        assert!(verify_and_decrypt(
-            &blob,
-            &recipient_sk.x25519_secret,
-            &recipient_sk.ml_kem_seed,
-            &imposter_pk.dsa_verifying_key,
-        )
-        .is_err());
+        assert!(
+            verify_and_decrypt(
+                &blob,
+                &recipient_sk.x25519_secret,
+                &recipient_sk.ml_kem_seed,
+                &imposter_pk.dsa_verifying_key,
+            )
+            .is_err()
+        );
     }
 
     #[test]

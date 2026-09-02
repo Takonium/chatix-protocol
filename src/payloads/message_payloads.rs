@@ -26,10 +26,16 @@ impl SendMessagePayload {
 
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
         if bytes.len() < 8 {
-            return Err(Error::new(ErrorKind::InvalidData, "send_message too short for message_id"));
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "send_message too short for message_id",
+            ));
         }
         let message_id = u64::from_be_bytes(bytes[..8].try_into().map_err(|_| {
-            Error::new(ErrorKind::InvalidData, "failed to decode send_message message_id")
+            Error::new(
+                ErrorKind::InvalidData,
+                "failed to decode send_message message_id",
+            )
         })?);
 
         let (recipient_id, recipient_consumed) = decode_sized_string(&bytes[8..])?;
@@ -40,10 +46,17 @@ impl SendMessagePayload {
             .ok_or_else(|| Error::new(ErrorKind::InvalidData, "send_message length overflow"))?;
 
         if bytes.len() != consumed {
-            return Err(Error::new(ErrorKind::InvalidData, "send_message payload length mismatch"));
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "send_message payload length mismatch",
+            ));
         }
 
-        Ok(Self { message_id, recipient_id, content })
+        Ok(Self {
+            message_id,
+            recipient_id,
+            content,
+        })
     }
 }
 
@@ -70,10 +83,16 @@ impl DeliverMessagePayload {
 
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
         if bytes.len() < 8 {
-            return Err(Error::new(ErrorKind::InvalidData, "deliver_message too short for message_id"));
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "deliver_message too short for message_id",
+            ));
         }
         let message_id = u64::from_be_bytes(bytes[..8].try_into().map_err(|_| {
-            Error::new(ErrorKind::InvalidData, "failed to decode deliver_message message_id")
+            Error::new(
+                ErrorKind::InvalidData,
+                "failed to decode deliver_message message_id",
+            )
         })?);
 
         let (sender_id, sender_consumed) = decode_sized_string(&bytes[8..])?;
@@ -84,10 +103,17 @@ impl DeliverMessagePayload {
             .ok_or_else(|| Error::new(ErrorKind::InvalidData, "deliver_message length overflow"))?;
 
         if bytes.len() != consumed {
-            return Err(Error::new(ErrorKind::InvalidData, "deliver_message payload length mismatch"));
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "deliver_message payload length mismatch",
+            ));
         }
 
-        Ok(Self { message_id, sender_id, content })
+        Ok(Self {
+            message_id,
+            sender_id,
+            content,
+        })
     }
 }
 
@@ -109,7 +135,10 @@ impl MessageStatus {
             0 => Ok(Self::SentToServer),
             1 => Ok(Self::Delivered),
             2 => Ok(Self::Failed),
-            _ => Err(Error::new(ErrorKind::InvalidData, "unknown message_status value")),
+            _ => Err(Error::new(
+                ErrorKind::InvalidData,
+                "unknown message_status value",
+            )),
         }
     }
 }
@@ -137,7 +166,10 @@ impl MessageStatusUpdatePayload {
             ));
         }
         let message_id = u64::from_be_bytes(bytes[..8].try_into().map_err(|_| {
-            Error::new(ErrorKind::InvalidData, "failed to decode message_status_update message_id")
+            Error::new(
+                ErrorKind::InvalidData,
+                "failed to decode message_status_update message_id",
+            )
         })?);
         let status = MessageStatus::from_u8(bytes[8])?;
         Ok(Self { message_id, status })
@@ -164,7 +196,10 @@ impl DeliveryReceiptPayload {
             ));
         }
         let message_id = u64::from_be_bytes(bytes.try_into().map_err(|_| {
-            Error::new(ErrorKind::InvalidData, "failed to decode delivery_receipt message_id")
+            Error::new(
+                ErrorKind::InvalidData,
+                "failed to decode delivery_receipt message_id",
+            )
         })?);
         Ok(Self { message_id })
     }
@@ -218,8 +253,15 @@ mod tests {
 
     #[test]
     fn message_status_update_roundtrip_all_statuses() {
-        for status in [MessageStatus::SentToServer, MessageStatus::Delivered, MessageStatus::Failed] {
-            let p = MessageStatusUpdatePayload { message_id: 42, status };
+        for status in [
+            MessageStatus::SentToServer,
+            MessageStatus::Delivered,
+            MessageStatus::Failed,
+        ] {
+            let p = MessageStatusUpdatePayload {
+                message_id: 42,
+                status,
+            };
             let decoded = MessageStatusUpdatePayload::decode(&p.encode()).unwrap();
             assert_eq!(decoded, p);
         }
@@ -227,7 +269,11 @@ mod tests {
 
     #[test]
     fn message_status_update_rejects_unknown_status() {
-        let mut enc = MessageStatusUpdatePayload { message_id: 1, status: MessageStatus::Delivered }.encode();
+        let mut enc = MessageStatusUpdatePayload {
+            message_id: 1,
+            status: MessageStatus::Delivered,
+        }
+        .encode();
         *enc.last_mut().unwrap() = 9;
         assert!(MessageStatusUpdatePayload::decode(&enc).is_err());
     }

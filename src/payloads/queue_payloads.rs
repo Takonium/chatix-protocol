@@ -1,4 +1,7 @@
-use super::common::{decode_sized_bytes, decode_sized_string, encode_sized_bytes, encode_sized_string, require_fully_consumed};
+use super::common::{
+    decode_sized_bytes, decode_sized_string, encode_sized_bytes, encode_sized_string,
+    require_fully_consumed,
+};
 use std::io::{self, Error, ErrorKind};
 
 /// Sent by the client (in the Established state) to drain any messages the
@@ -45,13 +48,22 @@ impl QueuedMessageDeliveryPayload {
 
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
         if bytes.len() < 16 {
-            return Err(Error::new(ErrorKind::InvalidData, "queued_message_delivery too short for ids"));
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "queued_message_delivery too short for ids",
+            ));
         }
         let queue_id = u64::from_be_bytes(bytes[..8].try_into().map_err(|_| {
-            Error::new(ErrorKind::InvalidData, "failed to decode queued_message_delivery queue_id")
+            Error::new(
+                ErrorKind::InvalidData,
+                "failed to decode queued_message_delivery queue_id",
+            )
         })?);
         let message_id = u64::from_be_bytes(bytes[8..16].try_into().map_err(|_| {
-            Error::new(ErrorKind::InvalidData, "failed to decode queued_message_delivery message_id")
+            Error::new(
+                ErrorKind::InvalidData,
+                "failed to decode queued_message_delivery message_id",
+            )
         })?);
 
         let (sender_id, sender_consumed) = decode_sized_string(&bytes[16..])?;
@@ -59,11 +71,21 @@ impl QueuedMessageDeliveryPayload {
         let consumed = 16usize
             .checked_add(sender_consumed)
             .and_then(|n| n.checked_add(content_consumed))
-            .ok_or_else(|| Error::new(ErrorKind::InvalidData, "queued_message_delivery length overflow"))?;
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidData,
+                    "queued_message_delivery length overflow",
+                )
+            })?;
 
         require_fully_consumed(bytes, consumed, "queued_message_delivery")?;
 
-        Ok(Self { queue_id, message_id, sender_id, content })
+        Ok(Self {
+            queue_id,
+            message_id,
+            sender_id,
+            content,
+        })
     }
 }
 
@@ -84,11 +106,17 @@ impl AckQueuedMessagePayload {
         if bytes.len() != 8 {
             return Err(Error::new(
                 ErrorKind::InvalidData,
-                format!("invalid ack_queued_message length: expected 8, got {}", bytes.len()),
+                format!(
+                    "invalid ack_queued_message length: expected 8, got {}",
+                    bytes.len()
+                ),
             ));
         }
         let queue_id = u64::from_be_bytes(bytes.try_into().map_err(|_| {
-            Error::new(ErrorKind::InvalidData, "failed to decode ack_queued_message queue_id")
+            Error::new(
+                ErrorKind::InvalidData,
+                "failed to decode ack_queued_message queue_id",
+            )
         })?);
         Ok(Self { queue_id })
     }

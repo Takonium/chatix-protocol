@@ -32,8 +32,16 @@ pub enum ProtocolError {
     #[error("sequence number violation: got {got}, last seen {last}")]
     SequenceViolation { got: u64, last: u64 },
 
-    #[error("payload length mismatch")]
-    PayloadLengthMismatch,
+    /// Returned by `PacketCodec::read_packet` when a session has been
+    /// established but an incoming packet arrives without the `ENCRYPTED`
+    /// flag set. Distinct from `CryptoError` (which means a decrypt/verify
+    /// operation was attempted and failed) because here no cryptographic
+    /// operation runs at all — the packet is rejected purely for violating
+    /// the "once established, everything is encrypted" invariant, which is
+    /// what stops a network attacker from injecting a plaintext, fully
+    /// attacker-controlled packet into an otherwise-encrypted session.
+    #[error("packet must be encrypted: a session is established but this packet was not")]
+    EncryptionRequired,
 
     #[error("cryptographic operation failed")]
     CryptoError,

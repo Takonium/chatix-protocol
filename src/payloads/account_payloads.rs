@@ -1,4 +1,6 @@
-use super::common::{decode_bool, decode_sized_string, encode_sized_string, require_fully_consumed};
+use super::common::{
+    decode_bool, decode_sized_string, encode_sized_string, require_fully_consumed,
+};
 use std::io::{self, Error, ErrorKind};
 
 /// Sent by the client (in the Established state, after registration) to ask
@@ -48,7 +50,10 @@ impl AccountStatusResponsePayload {
 
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
         if bytes.is_empty() {
-            return Err(Error::new(ErrorKind::InvalidData, "account_status_response payload too short"));
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "account_status_response payload too short",
+            ));
         }
         let is_banned = decode_bool(bytes[0], "account_status_response is_banned")?;
         let (ban_reason, consumed) = decode_sized_string(&bytes[1..])?;
@@ -60,14 +65,24 @@ impl AccountStatusResponsePayload {
                 "account_status_response missing subscription fields",
             ));
         }
-        let subscription_active = decode_bool(rest[0], "account_status_response subscription_active")?;
-        let subscription_expiry_timestamp = u64::from_be_bytes(rest[1..9].try_into().map_err(|_| {
-            Error::new(ErrorKind::InvalidData, "failed to decode account_status_response expiry")
-        })?);
+        let subscription_active =
+            decode_bool(rest[0], "account_status_response subscription_active")?;
+        let subscription_expiry_timestamp =
+            u64::from_be_bytes(rest[1..9].try_into().map_err(|_| {
+                Error::new(
+                    ErrorKind::InvalidData,
+                    "failed to decode account_status_response expiry",
+                )
+            })?);
 
         require_fully_consumed(bytes, 1 + consumed + 9, "account_status_response")?;
 
-        Ok(Self { is_banned, ban_reason, subscription_active, subscription_expiry_timestamp })
+        Ok(Self {
+            is_banned,
+            ban_reason,
+            subscription_active,
+            subscription_expiry_timestamp,
+        })
     }
 }
 

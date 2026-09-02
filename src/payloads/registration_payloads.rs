@@ -1,4 +1,6 @@
-use super::common::{decode_bool, decode_sized_string, encode_sized_string, require_fully_consumed};
+use super::common::{
+    decode_bool, decode_sized_string, encode_sized_string, require_fully_consumed,
+};
 use std::io::{self, Error, ErrorKind};
 
 /// Sent by the client (in the Established state) to claim a username for its
@@ -38,7 +40,10 @@ impl RegisterResponsePayload {
 
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
         if bytes.is_empty() {
-            return Err(Error::new(ErrorKind::InvalidData, "register_response payload too short"));
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "register_response payload too short",
+            ));
         }
         let success = decode_bool(bytes[0], "register_response success")?;
         let (message, consumed) = decode_sized_string(&bytes[1..])?;
@@ -53,7 +58,9 @@ mod tests {
 
     #[test]
     fn register_device_roundtrip() {
-        let payload = RegisterDevicePayload { username: "alice".to_string() };
+        let payload = RegisterDevicePayload {
+            username: "alice".to_string(),
+        };
         let encoded = payload.encode().unwrap();
         let decoded = RegisterDevicePayload::decode(&encoded).unwrap();
         assert_eq!(decoded, payload);
@@ -61,14 +68,21 @@ mod tests {
 
     #[test]
     fn register_device_rejects_trailing_bytes() {
-        let mut encoded = RegisterDevicePayload { username: "bob".to_string() }.encode().unwrap();
+        let mut encoded = RegisterDevicePayload {
+            username: "bob".to_string(),
+        }
+        .encode()
+        .unwrap();
         encoded.push(0);
         assert!(RegisterDevicePayload::decode(&encoded).is_err());
     }
 
     #[test]
     fn register_response_roundtrip_success() {
-        let payload = RegisterResponsePayload { success: true, message: "ok".to_string() };
+        let payload = RegisterResponsePayload {
+            success: true,
+            message: "ok".to_string(),
+        };
         let encoded = payload.encode().unwrap();
         let decoded = RegisterResponsePayload::decode(&encoded).unwrap();
         assert_eq!(decoded, payload);
@@ -76,7 +90,10 @@ mod tests {
 
     #[test]
     fn register_response_roundtrip_failure() {
-        let payload = RegisterResponsePayload { success: false, message: "username taken".to_string() };
+        let payload = RegisterResponsePayload {
+            success: false,
+            message: "username taken".to_string(),
+        };
         let encoded = payload.encode().unwrap();
         let decoded = RegisterResponsePayload::decode(&encoded).unwrap();
         assert_eq!(decoded, payload);
@@ -84,7 +101,12 @@ mod tests {
 
     #[test]
     fn register_response_rejects_non_canonical_boolean() {
-        let mut encoded = RegisterResponsePayload { success: true, message: String::new() }.encode().unwrap();
+        let mut encoded = RegisterResponsePayload {
+            success: true,
+            message: String::new(),
+        }
+        .encode()
+        .unwrap();
         encoded[0] = 2;
         assert!(RegisterResponsePayload::decode(&encoded).is_err());
     }

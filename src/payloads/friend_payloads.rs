@@ -1,7 +1,9 @@
-use super::common::{decode_bool, decode_sized_string, encode_sized_string, require_fully_consumed};
+use super::common::{
+    decode_bool, decode_sized_string, encode_sized_string, require_fully_consumed,
+};
 use std::io::{self, Error, ErrorKind};
 
-// ── Friend request ─────────────────────────────────────────────────────────
+// Friend request
 
 /// Sent by the client to request a friendship with another user by username.
 /// The server looks up the username and either forwards an IncomingFriendRequest
@@ -38,7 +40,10 @@ impl FriendRequestStatus {
             0 => Ok(Self::Accepted),
             1 => Ok(Self::Rejected),
             2 => Ok(Self::UserNotFound),
-            _ => Err(Error::new(ErrorKind::InvalidData, "unknown friend_request status")),
+            _ => Err(Error::new(
+                ErrorKind::InvalidData,
+                "unknown friend_request status",
+            )),
         }
     }
 }
@@ -56,7 +61,10 @@ impl FriendRequestResultPayload {
 
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
         if bytes.len() != 1 {
-            return Err(Error::new(ErrorKind::InvalidData, "friend_request_result must be exactly 1 byte"));
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "friend_request_result must be exactly 1 byte",
+            ));
         }
         let status = FriendRequestStatus::from_u8(bytes[0])?;
         Ok(Self { status })
@@ -99,10 +107,16 @@ impl FriendRequestDecisionPayload {
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
         let (sender_username, consumed) = decode_sized_string(bytes)?;
         if bytes.len() != consumed + 1 {
-            return Err(Error::new(ErrorKind::InvalidData, "friend_request_decision payload length mismatch"));
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "friend_request_decision payload length mismatch",
+            ));
         }
         let accepted = decode_bool(bytes[consumed], "friend_request_decision accepted")?;
-        Ok(Self { sender_username, accepted })
+        Ok(Self {
+            sender_username,
+            accepted,
+        })
     }
 }
 
@@ -139,7 +153,10 @@ impl RemoveFriendStatus {
         match v {
             0 => Ok(Self::Success),
             1 => Ok(Self::NotFound),
-            _ => Err(Error::new(ErrorKind::InvalidData, "unknown remove_friend status")),
+            _ => Err(Error::new(
+                ErrorKind::InvalidData,
+                "unknown remove_friend status",
+            )),
         }
     }
 }
@@ -157,7 +174,10 @@ impl RemoveFriendResultPayload {
 
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
         if bytes.len() != 1 {
-            return Err(Error::new(ErrorKind::InvalidData, "remove_friend_result must be exactly 1 byte"));
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "remove_friend_result must be exactly 1 byte",
+            ));
         }
         let status = RemoveFriendStatus::from_u8(bytes[0])?;
         Ok(Self { status })
@@ -178,11 +198,13 @@ impl FriendRemovedNotificationPayload {
     pub fn decode(bytes: &[u8]) -> io::Result<Self> {
         let (removed_by_username, consumed) = decode_sized_string(bytes)?;
         require_fully_consumed(bytes, consumed, "friend_removed_notification")?;
-        Ok(Self { removed_by_username })
+        Ok(Self {
+            removed_by_username,
+        })
     }
 }
 
-// ── Friend status ──────────────────────────────────────────────────────────
+// Friend status
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -199,7 +221,10 @@ impl FriendStatus {
             0 => Ok(Self::Online),
             1 => Ok(Self::Offline),
             2 => Ok(Self::IsTyping),
-            _ => Err(Error::new(ErrorKind::InvalidData, "unknown friend_status value")),
+            _ => Err(Error::new(
+                ErrorKind::InvalidData,
+                "unknown friend_status value",
+            )),
         }
     }
 }
@@ -225,13 +250,23 @@ impl FriendStatusUpdatePayload {
         let (friend_username, consumed) = decode_sized_string(bytes)?;
         let rest = &bytes[consumed..];
         if rest.len() != 9 {
-            return Err(Error::new(ErrorKind::InvalidData, "friend_status_update missing status/last_seen fields"));
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "friend_status_update missing status/last_seen fields",
+            ));
         }
         let status = FriendStatus::from_u8(rest[0])?;
         let last_seen = u64::from_be_bytes(rest[1..9].try_into().map_err(|_| {
-            Error::new(ErrorKind::InvalidData, "failed to decode friend_status_update last_seen")
+            Error::new(
+                ErrorKind::InvalidData,
+                "failed to decode friend_status_update last_seen",
+            )
         })?);
-        Ok(Self { friend_username, status, last_seen })
+        Ok(Self {
+            friend_username,
+            status,
+            last_seen,
+        })
     }
 }
 
@@ -260,21 +295,31 @@ mod tests {
 
     #[test]
     fn send_friend_request_roundtrip() {
-        let p = SendFriendRequestPayload { target_username: "bob".to_string() };
+        let p = SendFriendRequestPayload {
+            target_username: "bob".to_string(),
+        };
         let decoded = SendFriendRequestPayload::decode(&p.encode().unwrap()).unwrap();
         assert_eq!(decoded, p);
     }
 
     #[test]
     fn send_friend_request_rejects_trailing_bytes() {
-        let mut enc = SendFriendRequestPayload { target_username: "bob".to_string() }.encode().unwrap();
+        let mut enc = SendFriendRequestPayload {
+            target_username: "bob".to_string(),
+        }
+        .encode()
+        .unwrap();
         enc.push(0);
         assert!(SendFriendRequestPayload::decode(&enc).is_err());
     }
 
     #[test]
     fn friend_request_result_roundtrip_all_statuses() {
-        for status in [FriendRequestStatus::Accepted, FriendRequestStatus::Rejected, FriendRequestStatus::UserNotFound] {
+        for status in [
+            FriendRequestStatus::Accepted,
+            FriendRequestStatus::Rejected,
+            FriendRequestStatus::UserNotFound,
+        ] {
             let p = FriendRequestResultPayload { status };
             let decoded = FriendRequestResultPayload::decode(&p.encode()).unwrap();
             assert_eq!(decoded, p);
@@ -294,43 +339,60 @@ mod tests {
 
     #[test]
     fn incoming_friend_request_roundtrip() {
-        let p = IncomingFriendRequestPayload { sender_username: "alice".to_string() };
+        let p = IncomingFriendRequestPayload {
+            sender_username: "alice".to_string(),
+        };
         let decoded = IncomingFriendRequestPayload::decode(&p.encode().unwrap()).unwrap();
         assert_eq!(decoded, p);
     }
 
     #[test]
     fn friend_request_decision_roundtrip_accept() {
-        let p = FriendRequestDecisionPayload { sender_username: "alice".to_string(), accepted: true };
+        let p = FriendRequestDecisionPayload {
+            sender_username: "alice".to_string(),
+            accepted: true,
+        };
         let decoded = FriendRequestDecisionPayload::decode(&p.encode().unwrap()).unwrap();
         assert_eq!(decoded, p);
     }
 
     #[test]
     fn friend_request_decision_roundtrip_reject() {
-        let p = FriendRequestDecisionPayload { sender_username: "alice".to_string(), accepted: false };
+        let p = FriendRequestDecisionPayload {
+            sender_username: "alice".to_string(),
+            accepted: false,
+        };
         let decoded = FriendRequestDecisionPayload::decode(&p.encode().unwrap()).unwrap();
         assert_eq!(decoded, p);
     }
 
     #[test]
     fn friend_request_decision_rejects_non_canonical_bool() {
-        let mut enc = FriendRequestDecisionPayload { sender_username: "alice".to_string(), accepted: true }
-            .encode()
-            .unwrap();
+        let mut enc = FriendRequestDecisionPayload {
+            sender_username: "alice".to_string(),
+            accepted: true,
+        }
+        .encode()
+        .unwrap();
         *enc.last_mut().unwrap() = 7;
         assert!(FriendRequestDecisionPayload::decode(&enc).is_err());
     }
 
     #[test]
     fn friend_request_decision_rejects_missing_bool() {
-        let enc = SendFriendRequestPayload { target_username: "alice".to_string() }.encode().unwrap();
+        let enc = SendFriendRequestPayload {
+            target_username: "alice".to_string(),
+        }
+        .encode()
+        .unwrap();
         assert!(FriendRequestDecisionPayload::decode(&enc).is_err());
     }
 
     #[test]
     fn remove_friend_roundtrip() {
-        let p = RemoveFriendPayload { friend_username: "bob".to_string() };
+        let p = RemoveFriendPayload {
+            friend_username: "bob".to_string(),
+        };
         let decoded = RemoveFriendPayload::decode(&p.encode().unwrap()).unwrap();
         assert_eq!(decoded, p);
     }
@@ -351,15 +413,25 @@ mod tests {
 
     #[test]
     fn friend_removed_notification_roundtrip() {
-        let p = FriendRemovedNotificationPayload { removed_by_username: "alice".to_string() };
+        let p = FriendRemovedNotificationPayload {
+            removed_by_username: "alice".to_string(),
+        };
         let decoded = FriendRemovedNotificationPayload::decode(&p.encode().unwrap()).unwrap();
         assert_eq!(decoded, p);
     }
 
     #[test]
     fn friend_status_update_roundtrip_all_statuses() {
-        for status in [FriendStatus::Online, FriendStatus::Offline, FriendStatus::IsTyping] {
-            let p = FriendStatusUpdatePayload { friend_username: "carol".to_string(), status, last_seen: 1_700_000_000 };
+        for status in [
+            FriendStatus::Online,
+            FriendStatus::Offline,
+            FriendStatus::IsTyping,
+        ] {
+            let p = FriendStatusUpdatePayload {
+                friend_username: "carol".to_string(),
+                status,
+                last_seen: 1_700_000_000,
+            };
             let decoded = FriendStatusUpdatePayload::decode(&p.encode().unwrap()).unwrap();
             assert_eq!(decoded, p);
         }
@@ -367,7 +439,11 @@ mod tests {
 
     #[test]
     fn friend_status_update_rejects_unknown_status() {
-        let p = FriendStatusUpdatePayload { friend_username: "carol".to_string(), status: FriendStatus::Online, last_seen: 0 };
+        let p = FriendStatusUpdatePayload {
+            friend_username: "carol".to_string(),
+            status: FriendStatus::Online,
+            last_seen: 0,
+        };
         let mut enc = p.encode().unwrap();
         // status byte is right after the username string
         let username_len = 2 + "carol".len();
@@ -377,14 +453,20 @@ mod tests {
 
     #[test]
     fn friend_status_update_rejects_truncated_payload() {
-        let p = FriendStatusUpdatePayload { friend_username: "carol".to_string(), status: FriendStatus::Online, last_seen: 0 };
+        let p = FriendStatusUpdatePayload {
+            friend_username: "carol".to_string(),
+            status: FriendStatus::Online,
+            last_seen: 0,
+        };
         let enc = p.encode().unwrap();
         assert!(FriendStatusUpdatePayload::decode(&enc[..enc.len() - 1]).is_err());
     }
 
     #[test]
     fn send_typing_indicator_roundtrip() {
-        let p = SendTypingIndicatorPayload { recipient_username: "dave".to_string() };
+        let p = SendTypingIndicatorPayload {
+            recipient_username: "dave".to_string(),
+        };
         let decoded = SendTypingIndicatorPayload::decode(&p.encode().unwrap()).unwrap();
         assert_eq!(decoded, p);
     }

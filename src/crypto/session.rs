@@ -20,9 +20,8 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use crate::error::ProtocolError;
 
 use ml_kem::{
-    kem::Kem,
-    Ciphertext, Decapsulate, Encapsulate, KeyExport,
-    DecapsulationKey768, EncapsulationKey768, MlKem768,
+    Ciphertext, Decapsulate, DecapsulationKey768, Encapsulate, EncapsulationKey768, KeyExport,
+    MlKem768, kem::Kem,
 };
 
 pub const ML_KEM_768_EK_SIZE: usize = 1184;

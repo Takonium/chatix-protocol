@@ -1,3 +1,5 @@
+use crate::crypto::e2e::{ML_DSA_65_SIG_SIZE, ML_DSA_65_VK_SIZE};
+use crate::crypto::session::ML_KEM_768_CT_SIZE;
 use crate::error::ProtocolError;
 
 #[repr(u8)]
@@ -93,13 +95,16 @@ impl PacketType {
         match self {
             // client_id + x25519 pubkey (32 B) + ML-KEM-768 ek (1184 B)
             Self::ClientHello => 1300,
-            // server_id + x25519 pubkey (32 B) + ML-KEM-768 ciphertext (1088 B)
-            Self::ServerHello => 1200,
+            // server_id (headroom for the sized-string prefix + up to ~78
+            // bytes of id) + x25519 pubkey (32 B) + ML-KEM-768 ciphertext
+            // (1088 B) + ML-DSA-65 signature over the server's identity
+            // proof (3309 B)
+            Self::ServerHello => (32 + ML_KEM_768_CT_SIZE + ML_DSA_65_SIG_SIZE + 80) as u32,
             Self::ClientFinish | Self::ServerAccept => 1,
             // 32-byte nonce
             Self::AuthChallenge => 32,
-            // 32 pk + 64 sig + 4 len-prefix + up to 4096 attestation chain
-            Self::AuthResponse => 4200,
+            // ML-DSA-65 pk + sig + 4-byte len-prefix + up to 4096-byte attestation chain
+            Self::AuthResponse => (ML_DSA_65_VK_SIZE + ML_DSA_65_SIG_SIZE + 4 + 4096) as u32,
             // empty payloads
             Self::AuthAccept | Self::AuthReject => 0,
             Self::Ping | Self::Pong => 8,
@@ -150,4 +155,57 @@ impl PacketType {
             Ok(())
         }
     }
+
+    /// Which side of the connection is allowed to send this packet type.
+    ///
+    /// Derived from each payload's own doc comments (see `payloads/`), which
+    /// already say "Sent by the client..." / "Sent by the server..." for
+    /// every type. `ConnectionState::validate_incoming` uses this to reject
+    /// a packet type arriving from a direction it could never legitimately
+    /// come from, on top of the existing per-phase checks.
+    pub fn direction(self) -> Direction {
+        match self {
+            Self::ClientHello
+            | Self::ClientFinish
+            | Self::AuthResponse
+            | Self::SendMessage
+            | Self::RegisterDevice
+            | Self::QueryAccountStatus
+            | Self::SendFriendRequest
+            | Self::FriendRequestDecision
+            | Self::RemoveFriend
+            | Self::SendTypingIndicator
+            | Self::FetchQueuedMessages
+            | Self::AckQueuedMessage
+            | Self::DeliveryReceipt => Direction::ClientToServer,
+
+            Self::ServerHello
+            | Self::ServerAccept
+            | Self::AuthChallenge
+            | Self::AuthAccept
+            | Self::AuthReject
+            | Self::DeliverMessage
+            | Self::RegisterResponse
+            | Self::AccountStatusResponse
+            | Self::FriendRequestResult
+            | Self::IncomingFriendRequest
+            | Self::RemoveFriendResult
+            | Self::FriendRemovedNotification
+            | Self::FriendStatusUpdate
+            | Self::QueuedMessageDelivery
+            | Self::MessageStatusUpdate => Direction::ServerToClient,
+
+            // Keepalives and connection teardown can originate from either side.
+            Self::Ping | Self::Pong | Self::Close | Self::Error => Direction::Bidirectional,
+        }
+    }
+}
+
+/// Which side of a connection a packet type is allowed to be sent from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Direction {
+    ClientToServer,
+    ServerToClient,
+    /// Either side may send this type (keepalives, teardown).
+    Bidirectional,
 }
