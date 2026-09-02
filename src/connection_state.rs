@@ -113,6 +113,10 @@ impl ConnectionState {
                     | PacketType::FriendRemovedNotification
                     | PacketType::FriendStatusUpdate
                     | PacketType::SendTypingIndicator
+                    | PacketType::PublishE2eKey
+                    | PacketType::PublishE2eKeyResult
+                    | PacketType::FetchE2eKey
+                    | PacketType::E2eKeyResponse
                     | PacketType::Close
                     | PacketType::Error
             ),

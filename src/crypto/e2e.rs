@@ -167,7 +167,8 @@ pub fn encrypt_and_sign(
     ml_kem_ct.copy_from_slice(ct_bytes);
 
     // Derive content key and encrypt
-    let mut content_key = derive_e2e_key(x25519_shared.as_bytes(), kyber_shared.as_ref())?;
+    let context = e2e_context(&sender_x25519_pk, recipient_x25519_pk, &ml_kem_ct);
+    let mut content_key = derive_e2e_key(x25519_shared.as_bytes(), kyber_shared.as_ref(), &context)?;
     let nonce_bytes = random_nonce()?;
     let nonce = Nonce::assume_unique_for_key(nonce_bytes);
     let sealing_key = LessSafeKey::new(
@@ -239,6 +240,7 @@ pub fn verify_and_decrypt(
 
     // Key exchange - recipient side
     let recipient_sk = StaticSecret::from(*recipient_x25519_sk);
+    let recipient_pk = PublicKey::from(&recipient_sk);
     let sender_pk = PublicKey::from(sender_x25519_pk);
     let x25519_shared = recipient_sk.diffie_hellman(&sender_pk);
 
@@ -252,7 +254,8 @@ pub fn verify_and_decrypt(
     let kyber_shared = ml_kem_dk.decapsulate(&ct);
 
     // Derive content key and decrypt
-    let mut content_key = derive_e2e_key(x25519_shared.as_bytes(), kyber_shared.as_ref())?;
+    let context = e2e_context(&sender_x25519_pk, &recipient_pk.to_bytes(), ml_kem_ct_bytes);
+    let mut content_key = derive_e2e_key(x25519_shared.as_bytes(), kyber_shared.as_ref(), &context)?;
     let nonce = Nonce::assume_unique_for_key(aes_nonce_bytes);
     let opening_key = LessSafeKey::new(
         UnboundKey::new(&AES_256_GCM, &content_key).map_err(|_| ProtocolError::CryptoError)?,
@@ -268,13 +271,31 @@ pub fn verify_and_decrypt(
 
 // Internal helpers
 
-fn derive_e2e_key(x25519_shared: &[u8], kyber_shared: &[u8]) -> Result<[u8; 32], ProtocolError> {
+/// Builds the HKDF `info` context from the public material that produced the
+/// shared secrets, so the derived content key is bound to exactly which
+/// keys and ciphertext were exchanged rather than depending on the raw
+/// secrets alone.
+fn e2e_context(sender_x25519_pk: &[u8; 32], recipient_x25519_pk: &[u8; 32], ml_kem_ct: &[u8]) -> Vec<u8> {
+    let mut ctx = Vec::with_capacity(32 + 32 + ml_kem_ct.len());
+    ctx.extend_from_slice(sender_x25519_pk);
+    ctx.extend_from_slice(recipient_x25519_pk);
+    ctx.extend_from_slice(ml_kem_ct);
+    ctx
+}
+
+fn derive_e2e_key(
+    x25519_shared: &[u8],
+    kyber_shared: &[u8],
+    context: &[u8],
+) -> Result<[u8; 32], ProtocolError> {
     let mut ikm = Vec::with_capacity(x25519_shared.len() + kyber_shared.len());
     ikm.extend_from_slice(x25519_shared);
     ikm.extend_from_slice(kyber_shared);
     let hk = Hkdf::<Sha256>::new(None, &ikm);
     let mut key = [0u8; 32];
-    hk.expand(b"chatix-e2e-content-v1", &mut key)
+    let mut info = context.to_vec();
+    info.extend_from_slice(b"chatix-e2e-content-v1");
+    hk.expand(&info, &mut key)
         .map_err(|_| ProtocolError::CryptoError)?;
     ikm.zeroize();
     Ok(key)

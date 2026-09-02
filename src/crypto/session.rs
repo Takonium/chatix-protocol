@@ -90,7 +90,9 @@ impl ClientHandshakeState {
 
         let kyber_shared = dk.decapsulate(&ct);
 
-        derive_keys(x25519_shared.as_bytes(), kyber_shared.as_ref())
+        let context = handshake_context(&self.x25519_public, &server_x25519_pk, ml_kem_ciphertext);
+
+        derive_keys(x25519_shared.as_bytes(), kyber_shared.as_ref(), &context)
     }
 }
 
@@ -130,7 +132,9 @@ impl ServerHandshakeState {
         let mut ml_kem_ciphertext = [0u8; ML_KEM_768_CT_SIZE];
         ml_kem_ciphertext.copy_from_slice(ct_bytes);
 
-        let session_keys = derive_keys(x25519_shared.as_bytes(), kyber_shared.as_ref())?;
+        let context = handshake_context(&client_x25519_pk, &server_public, &ml_kem_ciphertext);
+
+        let session_keys = derive_keys(x25519_shared.as_bytes(), kyber_shared.as_ref(), &context)?;
 
         Ok(Self {
             x25519_public: server_public,
@@ -140,11 +144,30 @@ impl ServerHandshakeState {
     }
 }
 
+/// Builds the HKDF `info` context from the public material that produced the
+/// shared secrets, so the derived keys are bound to exactly which keys and
+/// ciphertext were exchanged rather than depending on the raw secrets alone.
+fn handshake_context(
+    client_x25519_pk: &[u8; 32],
+    server_x25519_pk: &[u8; 32],
+    ml_kem_ciphertext: &[u8; ML_KEM_768_CT_SIZE],
+) -> Vec<u8> {
+    let mut ctx = Vec::with_capacity(32 + 32 + ML_KEM_768_CT_SIZE);
+    ctx.extend_from_slice(client_x25519_pk);
+    ctx.extend_from_slice(server_x25519_pk);
+    ctx.extend_from_slice(ml_kem_ciphertext);
+    ctx
+}
+
 /// Derives two 32-byte session keys from the combined X25519 and ML-KEM shared secrets.
 ///
 /// Using two separate HKDF labels guarantees that even if one direction's key is
 /// exposed, the other direction remains secure.
-fn derive_keys(x25519_shared: &[u8], kyber_shared: &[u8]) -> Result<SessionKeys, ProtocolError> {
+fn derive_keys(
+    x25519_shared: &[u8],
+    kyber_shared: &[u8],
+    context: &[u8],
+) -> Result<SessionKeys, ProtocolError> {
     let mut ikm = Vec::with_capacity(x25519_shared.len() + kyber_shared.len());
     ikm.extend_from_slice(x25519_shared);
     ikm.extend_from_slice(kyber_shared);
@@ -154,9 +177,14 @@ fn derive_keys(x25519_shared: &[u8], kyber_shared: &[u8]) -> Result<SessionKeys,
     let mut c2s = [0u8; 32];
     let mut s2c = [0u8; 32];
 
-    hk.expand(b"chatix-c2s-v1", &mut c2s)
+    let mut c2s_info = context.to_vec();
+    c2s_info.extend_from_slice(b"chatix-c2s-v1");
+    let mut s2c_info = context.to_vec();
+    s2c_info.extend_from_slice(b"chatix-s2c-v1");
+
+    hk.expand(&c2s_info, &mut c2s)
         .map_err(|_| ProtocolError::CryptoError)?;
-    hk.expand(b"chatix-s2c-v1", &mut s2c)
+    hk.expand(&s2c_info, &mut s2c)
         .map_err(|_| ProtocolError::CryptoError)?;
 
     ikm.zeroize();

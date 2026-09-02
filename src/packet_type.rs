@@ -1,5 +1,5 @@
 use crate::crypto::e2e::{ML_DSA_65_SIG_SIZE, ML_DSA_65_VK_SIZE};
-use crate::crypto::session::ML_KEM_768_CT_SIZE;
+use crate::crypto::session::{ML_KEM_768_CT_SIZE, ML_KEM_768_EK_SIZE};
 use crate::error::ProtocolError;
 
 #[repr(u8)]
@@ -33,6 +33,10 @@ pub enum PacketType {
     FriendRemovedNotification = 32,
     FriendStatusUpdate = 33,
     SendTypingIndicator = 34,
+    PublishE2eKey = 35,
+    PublishE2eKeyResult = 36,
+    FetchE2eKey = 37,
+    E2eKeyResponse = 38,
 
     // Messaging (40–79)
     SendMessage = 40,
@@ -74,6 +78,10 @@ impl PacketType {
             32 => Ok(Self::FriendRemovedNotification),
             33 => Ok(Self::FriendStatusUpdate),
             34 => Ok(Self::SendTypingIndicator),
+            35 => Ok(Self::PublishE2eKey),
+            36 => Ok(Self::PublishE2eKeyResult),
+            37 => Ok(Self::FetchE2eKey),
+            38 => Ok(Self::E2eKeyResponse),
             40 => Ok(Self::SendMessage),
             41 => Ok(Self::DeliverMessage),
             42 => Ok(Self::FetchQueuedMessages),
@@ -130,6 +138,16 @@ impl PacketType {
             Self::RemoveFriendResult => 1,
             // 2-byte len prefix + up to 128-byte username + 1-byte status + 8-byte timestamp
             Self::FriendStatusUpdate => 139,
+            // x25519 pubkey (32 B) + ML-KEM-768 ek (1184 B) + ML-DSA-65 vk (1952 B), no
+            // length prefixes needed since every field is fixed size
+            Self::PublishE2eKey => (32 + ML_KEM_768_EK_SIZE + ML_DSA_65_VK_SIZE) as u32,
+            // 1-byte success flag + 2-byte len prefix + up to 256-byte message
+            Self::PublishE2eKeyResult => 259,
+            // 2-byte len prefix + up to 128-byte username
+            Self::FetchE2eKey => 130,
+            // 2-byte len prefix + up to 128-byte username + 1-byte status +
+            // (only when Found) x25519 pubkey (32 B) + ML-KEM-768 ek (1184 B) + ML-DSA-65 vk (1952 B)
+            Self::E2eKeyResponse => (130 + 1 + 32 + ML_KEM_768_EK_SIZE + ML_DSA_65_VK_SIZE) as u32,
             // 8-byte message_id + 1-byte status
             Self::MessageStatusUpdate => 9,
             // 8-byte message_id
@@ -177,7 +195,9 @@ impl PacketType {
             | Self::SendTypingIndicator
             | Self::FetchQueuedMessages
             | Self::AckQueuedMessage
-            | Self::DeliveryReceipt => Direction::ClientToServer,
+            | Self::DeliveryReceipt
+            | Self::PublishE2eKey
+            | Self::FetchE2eKey => Direction::ClientToServer,
 
             Self::ServerHello
             | Self::ServerAccept
@@ -193,7 +213,9 @@ impl PacketType {
             | Self::FriendRemovedNotification
             | Self::FriendStatusUpdate
             | Self::QueuedMessageDelivery
-            | Self::MessageStatusUpdate => Direction::ServerToClient,
+            | Self::MessageStatusUpdate
+            | Self::PublishE2eKeyResult
+            | Self::E2eKeyResponse => Direction::ServerToClient,
 
             // Keepalives and connection teardown can originate from either side.
             Self::Ping | Self::Pong | Self::Close | Self::Error => Direction::Bidirectional,

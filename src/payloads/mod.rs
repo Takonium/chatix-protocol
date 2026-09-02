@@ -3,6 +3,7 @@ mod common;
 pub mod account_payloads;
 pub mod auth_payloads;
 pub mod close_payloads;
+pub mod e2e_key_payloads;
 pub mod error_payloads;
 pub mod friend_payloads;
 pub mod hello_payloads;
@@ -16,6 +17,10 @@ pub use auth_payloads::{
     AuthAcceptPayload, AuthChallengePayload, AuthRejectPayload, AuthResponsePayload,
 };
 pub use close_payloads::{ClosePayload, CloseReason};
+pub use e2e_key_payloads::{
+    E2eKeyResponsePayload, E2eKeyStatus, FetchE2eKeyPayload, PublishE2eKeyPayload,
+    PublishE2eKeyResultPayload,
+};
 pub use error_payloads::ErrorPayload;
 pub use friend_payloads::{
     FriendRemovedNotificationPayload, FriendRequestDecisionPayload, FriendRequestResultPayload,

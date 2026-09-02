@@ -46,6 +46,9 @@ pub enum ProtocolError {
     #[error("cryptographic operation failed")]
     CryptoError,
 
+    #[error("identity key for '{identifier}' changed since it was last pinned")]
+    IdentityKeyChanged { identifier: String },
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
